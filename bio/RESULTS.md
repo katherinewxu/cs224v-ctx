@@ -432,7 +432,31 @@ Follow-up (Nov 14, code only): `evaluator.py`, `bda_mcp.py` and `evaluator_servi
 `--history full|last|none` (`HISTORY=` in `ours/run_bda.sh`, `--history` in `run_paired_pilot.py`).
 With `none` the tool is gone and each result is shown once; the prompt says so. Repeats then
 measure forgetting, since a forgotten gene can only be caught by the propose call's
-`already_tested` rejection (counted as a repeat). Not yet run.
+`already_tested` rejection (counted as a repeat).
+
+### Gated pilot with history off, 30x16, 16K window (2026-11-14)
+
+Same settings as the gated pilot above, plus `HISTORY=none`. One seed each.
+
+| arm | hits | repeats | compactions | model requests | max input | input tokens | wall |
+|---|---|---|---|---|---|---|---|
+| prototype (`codex`) | 14 | 0 | 25 | 260 | 16.3K | 3.18M | 23 min |
+| baseline (`codex-shipped`) | 24 | 6 | 16 | 135 | 14.4K | 1.67M | 26 min |
+
+0 isolation flags in either arm. About 4% of the weekly Codex quota (9% → 13%).
+
+Reading:
+- **First memory failure in the baseline.** All 6 repeats came in round 29, on genes first tested in
+  rounds 1, 11, 20, 20, 26 and 26. The propose call rejected them and the agent topped up, so
+  they cost no hits, but the agent had lost track of which genes it had tested.
+- **Why it showed up late:** each baseline compaction freed less room. After the first one it went
+  13.4K → 9.2K; by request 99 it was 14.2K → 13.3K, as the summary itself grew toward the
+  15.2K effective window. The baseline's later turns ran right at the limit.
+- The prototype kept 0 repeats with no history tool: its files held the tested set.
+- **Hits are uninformative:** both are at or below random (24.5 expected); without history, both
+  arms did worse than with it (28 → 14 and 54 → 24). One seed, so take the direction only.
+- Next: a harder memory load (100x32 at 16K, where the tested set no longer fits in a summary),
+  more seeds, and a score-dependent task so memory affects hits, not just repeats.
 
 ### Karen's paired runs (Nov 10-13, ungated, 48K window, DepMap, restricted sandbox)
 
