@@ -6,9 +6,12 @@
 #     script written in an earlier turn cannot run later rounds. GATE=0: one message, the agent may
 #     script the whole episode (the Nov 13 pilot did, so context never grew).
 #   FEATURES=screens|depmap (default screens)
+#   HISTORY=full|last|none (default full): what the history tool returns. With full, an agent can re-read every
+#     past result after compaction, so it never has to remember anything (the gated Nov 13 baseline did this 41
+#     times). none removes the tool: each result is shown once, in end_round's reply.
 # Evaluator state, requests and scoring go to ours/evals/NAME (outside the agent workspace).
 set -eu
-NAME=$1; HARNESS=$2; CW=$3; R=$4; B=$5; WALL=${6:-3600}; GATE=${GATE:-1}
+NAME=$1; HARNESS=$2; CW=$3; R=$4; B=$5; WALL=${6:-3600}; GATE=${GATE:-1}; HISTORY=${HISTORY:-full}
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(dirname "$HERE")
 EVAL="$HERE/evals/$NAME"; [ -e "$EVAL" ] && { echo "exists: $EVAL"; exit 1; }
 mkdir -p "$HERE/evals" "$HERE/runs" "$HERE/seed_empty" "$HERE/mcp"
@@ -20,17 +23,21 @@ if [ "$GATE" = 1 ]; then
 fi
 # The evaluator runs for the whole episode (Codex restarts MCP servers on every turn); bda_mcp.py relays to it.
 "$ROOT/bio/.venv/bin/python" -I "$ROOT/bio/evaluator.py" --rounds "$R" --batch "$B" --anonymize \
-  --features "${FEATURES:-screens}" --secret-seed --round-token-hashes "$HASHES" --port 0 --out "$EVAL" \
+  --features "${FEATURES:-screens}" --secret-seed --history "$HISTORY" --round-token-hashes "$HASHES" --port 0 --out "$EVAL" \
   > "$HERE/evals/$NAME.server.log" 2>&1 &
 EVPID=$!; trap 'kill $EVPID 2>/dev/null' EXIT
 for _ in $(seq 120); do [ -s "$EVAL/port" ] && break; sleep 1; done
 [ -s "$EVAL/port" ] || { echo "evaluator did not start"; cat "$HERE/evals/$NAME.server.log"; exit 1; }
 cat > "$HERE/mcp/$NAME.json" <<JSON
 {"bda": {"command": "$ROOT/bio/.venv/bin/python",
-         "args": ["-I", "$ROOT/bio/bda_mcp.py", "--url", "http://127.0.0.1:$(cat "$EVAL/port")"]}}
+         "args": ["-I", "$ROOT/bio/bda_mcp.py", "--url", "http://127.0.0.1:$(cat "$EVAL/port")", "--history", "$HISTORY"]}}
 JSON
 
 TASK="You are running a pooled CRISPR screen to identify genes that regulate the production of Interferon-gamma (IFNG). The measured score is the log fold change in IFNG normalized read counts. There are 18,418 genes, identified by opaque IDs G00000..G18417 (gene names are hidden, so prior knowledge of gene names cannot help). About 5% are hits (largest |score|). You have $R rounds. In each round: propose exactly $B new, untested gene IDs with the bda propose tool (up to 3 propose calls per round to top up rejected IDs), then call end_round to get their measured scores and hit flags. You may call lookup on up to 4 IDs per round to see the 8 most similar genes to each (similar genes often behave alike). Maximize the cumulative number of hits over all $R rounds. Never re-test a gene."
+case "$HISTORY" in
+  none) TASK="$TASK There is no history tool: each round's results are shown once, in end_round's reply, so keep whatever record you need." ;;
+  last) TASK="$TASK The history tool returns only the last closed round's results; older results are shown once, in end_round's reply, so keep whatever record you need." ;;
+esac
 FOLLOW=()
 if [ "$GATE" = 1 ]; then
   PROMPT="$TASK Rounds are run one per message: each message gives that round's round_token, which you must pass to propose. Run only that round, call end_round, then stop and wait for the next message. This is round 1 of $R; round_token: ${TOKENS[0]}"
@@ -42,7 +49,7 @@ else
   PROMPT="$TASK Keep going until status reports done, then reply with the total number of hits."
 fi
 
-echo "$(date) ours run $NAME harness=$HARNESS cw=$CW ${R}x${B} gate=$GATE" | tee -a "$HERE/runs.log"
+echo "$(date) ours run $NAME harness=$HARNESS cw=$CW ${R}x${B} gate=$GATE history=$HISTORY" | tee -a "$HERE/runs.log"
 MI=(); [ "$HARNESS" = codex ] && MI=(--model-info-dir "$HERE/model_info")
 ~/.ours/bin/ours run --harness "$HARNESS" --model gpt-6.1-terra --context-window "$CW" --lane subscription \
   ${MI[@]+"${MI[@]}"} --prompt "$PROMPT" ${FOLLOW[@]+"${FOLLOW[@]}"} --task "$NAME" --seed "$HERE/seed_empty" \

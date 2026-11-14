@@ -22,13 +22,17 @@ ARMS = {"prototype": "codex", "baseline": "codex-shipped"}
 GATE_NOTE = ("\n\nRounds are run one per message. Each message gives that round's round_token; pass it in "
              "propose args as round_token. Run only that round, call end_round, then stop and wait for the next "
              "message. This is round 1 of {R}; round_token: {T}")
+HISTORY_NOTE = {"none": "\n\nThe history action is disabled in this run: each result is shown once, when you "
+                        "propose it, so keep whatever record you need.",
+                "last": "\n\nThe history action returns only the last closed round and the current round; older "
+                        "results are shown once, so keep whatever record you need."}
 
 
 def gate_files(root, arm, a):
     """Per-arm random tokens: the evaluator gets hashes, the agent gets one token per user message."""
     tokens = [secrets.token_hex(4) for _ in range(a.rounds)]
     prompt = root / f"{arm}_prompt.md"
-    prompt.write_text(a.prompt_file.read_text() + GATE_NOTE.format(R=a.rounds, T=tokens[0]))
+    prompt.write_text(a.prompt_file.read_text() + HISTORY_NOTE.get(a.history, "") + GATE_NOTE.format(R=a.rounds, T=tokens[0]))
     follow = [f"Round {k} of {a.rounds}. round_token: {tokens[k - 1]}" +
               (" This is the last round: after end_round, give your final report." if k == a.rounds else "")
               for k in range(2, a.rounds + 1)]
@@ -39,11 +43,14 @@ def gate_files(root, arm, a):
 def run_arm(root, arm, a):
     evaluator_out = root / f"{arm}_evaluator"
     prompt, follow, hashes = gate_files(root, arm, a) if a.gate else (a.prompt_file, None, [])
+    if not a.gate and a.history != "full":
+        prompt = root / f"{arm}_prompt.md"
+        prompt.write_text(a.prompt_file.read_text() + HISTORY_NOTE[a.history])
     service = subprocess.Popen(
         [str(PYTHON), "-B", str(BIO / "evaluator_service.py"), "--out", str(evaluator_out),
          "--screen", a.screen, "--rounds", str(a.rounds), "--batch", str(a.batch),
          "--seed", str(a.seed), "--max-proposals", "3", "--max-lookups", "8",
-         "--max-requests", "10000"] + (["--round-token-hashes", ",".join(hashes)] if hashes else []),
+         "--max-requests", "10000", "--history", a.history] + (["--round-token-hashes", ",".join(hashes)] if hashes else []),
         cwd=REPO, stdout=(root / f"{arm}_evaluator.log").open("w"), stderr=subprocess.STDOUT)
     try:
         connection = evaluator_out / "connection.json"
@@ -85,10 +92,13 @@ def main():
     p.add_argument("--gate", action="store_true",
                    help="one agent turn per round (round tokens via follow-up messages), so the agent cannot "
                         "script the episode and context actually accumulates")
+    p.add_argument("--history", choices=["full", "last", "none"], default="full",
+                   help="none: no re-reading past results, so the agent must remember them across compactions")
     a = p.parse_args()
-    name = f"pilot_{a.rounds}x{a.batch}_seed{a.seed}{'_gated' if a.gate else ''}_{a.tag}"
+    sfx = ("_gated" if a.gate else "") + ("" if a.history == "full" else f"_hist{a.history}")
+    name = f"pilot_{a.rounds}x{a.batch}_seed{a.seed}{sfx}_{a.tag}"
     root = BIO / "runtime_setup/private" / name
-    report = BIO / "runs" / f"paired_{a.rounds}x{a.batch}_seed{a.seed}{'_gated' if a.gate else ''}_{a.tag}.json"
+    report = BIO / "runs" / f"paired_{a.rounds}x{a.batch}_seed{a.seed}{sfx}_{a.tag}.json"
     if report.exists():
         p.error(f"Report already exists: {report}")
     root.mkdir(parents=True, exist_ok=False)

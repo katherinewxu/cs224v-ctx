@@ -202,3 +202,22 @@ def test_round_gate_requires_each_rounds_token(tmp_path):
     assert call("6", "propose", {"ids": [g[1]], "round_token": "b2"})[0] == 200
     status, r = call("7", "end_round", {})
     assert r["done"] and "next" not in r
+
+
+@pytest.mark.parametrize("mode", ["full", "last", "none"])
+def test_history_modes(tmp_path, mode):
+    env = BioEnv(toy_screen(), rounds=3, batch=1, anonymize=True, features=False)
+    e = Evaluator(env, tmp_path / "episode", history=mode)
+    a, b, c = env.ids[:3]
+    for n, g in enumerate((a, b)):
+        call(e, f"p{n}", "propose", ids=[g])
+        call(e, f"e{n}", "end_round")
+    call(e, "p2", "propose", ids=[c])
+    status, h = call(e, "h", "history")
+    if mode == "none":
+        assert status == 400 and "disabled" in h["error"]
+    else:
+        assert [x["id"] for x in h["observations"]] == ([a, b, c] if mode == "full" else [b, c])
+    with pytest.raises(ValueError):
+        Evaluator(env, tmp_path / "other", history="bogus")
+    e.trace.close()

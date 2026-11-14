@@ -99,3 +99,21 @@ def test_gate_and_relay_across_restarts(tmp_path):
     t2 = turn([("propose", {"ids": [g[1]], "round_token": "tok2"}), ("end_round", {})])
     assert t2[0]["accepted"] == [g[1]] and t2[1]["rounds_left"] == 0 and "next" not in t2[1]
     srv.shutdown()
+
+
+@pytest.mark.parametrize("mode", ["full", "last", "none"])
+def test_history_modes(tmp_path, mode):
+    """full: every result; last: only the last closed round; none: disabled (results are seen once)."""
+    env = BioEnv(toy_screen(), rounds=3, batch=1, anonymize=True, features=False)
+    ev = Evaluator(env, tmp_path / "ev", history_mode=mode)
+    for g in env.ids[:2]:
+        assert ev.propose([g])["accepted"] == [g]
+        ev.end_round()
+    h = ev.history()
+    if mode == "none":
+        assert "disabled" in h["error"]
+    else:
+        assert [x["id"] for x in h["results"]] == (env.ids[:2] if mode == "full" else env.ids[1:2])
+    assert ev.status()["history"] == mode
+    with pytest.raises(ValueError):
+        Evaluator(env, tmp_path / "ev2", history_mode="bogus")

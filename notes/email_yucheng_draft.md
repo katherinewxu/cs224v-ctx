@@ -27,19 +27,28 @@ round 98 vs. the full table, mostly because the summaries drop which genes were 
 scores (the model answers 4 of 381 recall probes correctly). We're adding a control that keeps the
 summary plus the exact tested-ID list to separate the two.
 
-**Prototype status.** Katherine has the release now (pinned to 2026.11.09-166c433f). The BDA task runs
-through a small MCP server, so scores and gene names stay outside the agent. With `--context-window
-16000` the prototype compacted once in an 8-round smoke test (15.5K to 9.2K tokens), and the trace
-shows it. We're using `--harness codex-shipped` as the baseline. Next is the matched 30 x 16 pilot.
+**Prototype status.** We have the release (pinned to 2026.11.09-166c433f). The BDA task runs through an
+MCP server, so scores and gene names stay outside the agent, and every compaction is traced. Two findings:
+
+- *Agents script the episode.* Given one message, both the prototype and `codex-shipped` wrote a loop
+  that played all rounds itself, so context never grew (10-21 model requests per 100-round run, no
+  compactions). We now gate rounds: each round opens only with a random token sent in that round's
+  user message, so the agent takes one turn per round.
+- *Gated pilot (30 rounds x 16, `--context-window 16000`, one seed):* the prototype compacted 28 times
+  and got 28 hits; the baseline compacted 23 times and got 54 hits; neither repeated a gene. But the
+  baseline kept track by re-reading our history tool 41 times, which made forgetting free. We've
+  removed that tool for the next pair, so each result is shown once and has to survive compaction.
 
 **Questions.**
 1. Is `--harness codex-shipped` the right baseline, i.e. the same runtime with the structured memory off?
 2. Is `--context-window 16000` a reasonable setting for the pilot, or would you set it differently
    (or use `--catalog-share`)?
-3. On macOS the Codex sandbox can read the whole disk. We scramble gene IDs with a secret seed and audit
-   the trace for reads outside the workspace. Is there a Linux build with the bubblewrap sandbox, or a
-   better way to isolate the task data?
-4. Monica and you mentioned the benchmark needs to be harder for long horizons. Is ~150-200 rounds on
+3. On macOS the default Codex sandbox can read the whole disk. Karen wrote a restricted seatbelt profile
+   that blocks reads of the repo and task data, and we also scramble gene IDs with a secret seed and
+   audit the trace. Is there a supported way to restrict reads (or a Linux build with bubblewrap)?
+4. Is gating one round per user message (with `--follow-up`) a fair way to use the prototype, or is
+   there a mode you'd rather we use for long multi-turn tasks?
+5. Monica and you mentioned the benchmark needs to be harder for long horizons. Is ~150-200 rounds on
    this screen what you had in mind, or would you rather we add a second screen or tasks with more
    cross-round dependencies?
 

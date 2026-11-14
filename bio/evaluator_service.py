@@ -23,11 +23,17 @@ from env import BioEnv
 
 
 class Evaluator:
-    def __init__(self, env, out, *, max_proposals=3, max_lookups=8, max_requests=10000, round_token_hashes=None):
+    def __init__(self, env, out, *, max_proposals=3, max_lookups=8, max_requests=10000, round_token_hashes=None,
+                 history="full"):
         if not env.anonymize:
             raise ValueError("Service requires opaque IDs")
         if min(max_proposals, max_lookups, max_requests) < 1:
             raise ValueError("Budgets must be positive")
+        if history not in ("full", "last", "none"):
+            raise ValueError("history must be full, last or none")
+        # full: history returns every observation; last: last closed round + current round; none: disabled
+        # (each result is seen once, so after compaction the agent has only what it chose to keep).
+        self.history = history
         self.env = env
         self.out = Path(out)
         self.out.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -50,7 +56,7 @@ class Evaluator:
                "current": asdict(env._cur), "tested": env.tested,
                "budgets": {"max_proposals_per_round": self.max_proposals,
                            "max_lookups_per_round": self.max_lookups,
-                           "max_requests": self.max_requests},
+                           "max_requests": self.max_requests, "history": self.history},
                "requests": self.requests}
         tmp = self.out / "run.json.tmp"
         with tmp.open("w") as f:
@@ -87,7 +93,12 @@ class Evaluator:
                     "proposal_calls_per_round": self.max_proposals,
                     "lookup_calls_per_round": self.max_lookups}
         if action == "history":
-            return {"observations": self.observations(), "round": env.round + 1,
+            if self.history == "none":
+                raise ValueError("history is disabled in this run: each result is shown once, when proposed")
+            obs = self.observations()
+            if self.history == "last":
+                obs = [x for x in obs if x["round"] >= env.round]  # last closed round (1-based = env.round) + current
+            return {"observations": obs, "round": env.round + 1,
                     "done": env.done, "remaining": 0 if env.done else env.remaining_in_batch()}
         if env.done:
             raise ValueError("Episode finished")
@@ -212,6 +223,7 @@ def main():
     p.add_argument("--max-requests", type=int, default=10000)
     p.add_argument("--round-token-hashes", default="",
                    help="comma-separated sha256 per round: one agent turn per round (see run_paired_pilot --gate)")
+    p.add_argument("--history", choices=["full", "last", "none"], default="full")
     a = p.parse_args()
     if a.rounds < 1 or a.batch < 1:
         p.error("rounds and batch must be positive")
@@ -220,7 +232,7 @@ def main():
                  seed=a.seed, features="depmap")
     e = Evaluator(env, a.out, max_proposals=a.max_proposals,
                   max_lookups=a.max_lookups, max_requests=a.max_requests,
-                  round_token_hashes=[h for h in a.round_token_hashes.split(",") if h])
+                  round_token_hashes=[h for h in a.round_token_hashes.split(",") if h], history=a.history)
     import platform
     from env import DATA_DIR, DEPMAP_CSV
     from validate_depmap import sha256

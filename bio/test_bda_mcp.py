@@ -64,3 +64,14 @@ def test_round_gate_needs_each_rounds_token(tmp_path):
     assert body[2]["accepted"] == ["G00001"] and "next" in body[3]
     assert res[4]["isError"]  # round 1's token does not open round 2
     assert body[5]["accepted"] == ["G00002"] and "next" not in body[6] and body[6]["rounds_left"] == 0
+
+
+def test_history_none_hides_the_tool(tmp_path):
+    msgs = [{"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "history", "arguments": {}}}]
+    r = subprocess.run([sys.executable, "-I", str(HERE / "bda_mcp.py"), "--rounds", "2", "--batch", "2",
+                        "--anonymize", "--history", "none", "--out", str(tmp_path / "ev")],
+                       input="\n".join(map(json.dumps, msgs)) + "\n", capture_output=True, text=True, timeout=300)
+    out = {m["id"]: m for m in map(json.loads, r.stdout.splitlines())}
+    assert "history" not in [t["name"] for t in out[1]["result"]["tools"]]
+    assert out[2]["error"]["code"] == -32602

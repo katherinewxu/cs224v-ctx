@@ -7,7 +7,8 @@ and can only:
     POST /propose   {"ids": [...]}  submit genes for the current round (limited calls/round)
     POST /end_round {}              close the round; returns scores + hit flags of accepted genes
     POST /lookup    {"ids": [...]}  similar genes (up to --lookups IDs per round)
-    GET  /history                   every result the agent has already observed
+    GET  /history                   results already observed (--history full: all; last: the last
+                                    closed round only; none: disabled, so results are seen once)
     GET  /status                    round, batch, remaining budget
     GET  /help                      the text above, for the agent's instructions
 
@@ -37,6 +38,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from env import BioEnv  # noqa: E402
 
+HISTORY_MODES = ("full", "last", "none")
 HELP = __doc__.split("Scores are revealed")[0].strip()
 
 
@@ -60,8 +62,10 @@ class RoundGate:
 
 class Evaluator:
     def __init__(self, env: BioEnv, out: Path, proposals_per_round: int = 3, lookups_per_round: int = 4,
-                 gate: RoundGate | None = None):
-        self.gate = gate
+                 gate: RoundGate | None = None, history_mode: str = "full"):
+        if history_mode not in HISTORY_MODES:
+            raise ValueError(f"history_mode must be one of {HISTORY_MODES}")
+        self.gate, self.history_mode = gate, history_mode
         self.on_done = None
         self.env, self.out = env, Path(out)
         self.out.mkdir(parents=True, exist_ok=True)
@@ -81,7 +85,8 @@ class Evaluator:
                 "batch": e.batch, "remaining_in_batch": None if e.done else e.remaining_in_batch(),
                 "proposals_left": self.max_props - self.props_used,
                 "lookups_left": self.max_lookups - self.lookups_used, "n_genes": len(e.ids),
-                "tested": len(e.tested), "cum_hits": e.log[-1].cum_hits if e.log else 0}
+                "tested": len(e.tested), "cum_hits": e.log[-1].cum_hits if e.log else 0,
+                "history": self.history_mode}
 
     def propose(self, ids, token=None) -> dict:
         e = self.env
@@ -130,8 +135,11 @@ class Evaluator:
 
     def history(self) -> dict:
         e = self.env
+        if self.history_mode == "none":
+            return {"error": "history is disabled in this run: each result is shown once, in end_round's reply"}
+        logs = e.log[-1:] if self.history_mode == "last" else e.log
         return {"results": [{"round": l.round + 1, "id": g, "score": round(l.revealed[g], 4), "hit": g in l.hits}
-                            for l in e.log for g in l.accepted]}
+                            for l in logs for g in l.accepted]}
 
     # ---- bookkeeping --------------------------------------------------------
     def record(self, method: str, path: str, body, resp: dict) -> None:
@@ -207,12 +215,15 @@ def main() -> None:
     ap.add_argument("--secret-seed", action="store_true",
                     help="random ID-anonymization seed kept in memory; only its sha256 is written until the end")
     ap.add_argument("--round-token-hashes", default="", help="comma-separated sha256 per round: gate rounds on tokens")
+    ap.add_argument("--history", choices=HISTORY_MODES, default="full",
+                    help="full: /history returns every result; last: only the last closed round; none: disabled "
+                         "(the agent must keep its own record, so memory survives compaction or it doesn't)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     seed = int.from_bytes(os.urandom(4), "big") if a.secret_seed else a.seed
     env = BioEnv(a.screen, rounds=a.rounds, batch=a.batch, anonymize=a.anonymize, seed=seed, features=a.features)
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
-    ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate)
+    ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history)
     out = Path(a.out)
     (out / "config.json").write_text(json.dumps(vars(a)))
     if a.secret_seed:

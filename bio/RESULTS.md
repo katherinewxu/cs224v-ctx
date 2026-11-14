@@ -428,6 +428,12 @@ Reading:
   rises after round 20. One seed each, so the 28 vs 54 gap is not evidence about memory.
 - The prototype spends 1.8x the tokens and 2.3x the time, mostly maintaining its files.
 
+Follow-up (Nov 14, code only): `evaluator.py`, `bda_mcp.py` and `evaluator_service.py` take
+`--history full|last|none` (`HISTORY=` in `ours/run_bda.sh`, `--history` in `run_paired_pilot.py`).
+With `none` the tool is gone and each result is shown once; the prompt says so. Repeats then
+measure forgetting, since a forgotten gene can only be caught by the propose call's
+`already_tested` rejection (counted as a repeat). Not yet run.
+
 ### Karen's paired runs (Nov 10-13, ungated, 48K window, DepMap, restricted sandbox)
 
 | pair | prototype | baseline | diff | model requests (proto/base) | compactions |

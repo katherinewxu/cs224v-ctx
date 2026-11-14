@@ -130,10 +130,17 @@ Mac with Apple silicon only. Needs read access to Yucheng's release repo and a C
    - The task's tools come from `bio/bda_mcp.py`, an MCP server that holds the screen, scores and
      gene mapping in its own process. It scrambles gene IDs with a random seed it keeps in memory, and
      writes only the seed's hash until the episode ends. The scoring goes to `ours/evals/NAME/`.
+   - `GATE=1` (default) runs one model turn per round: each round's random token arrives in that
+     round's user message, so the agent can't script the whole episode in code.
+   - `HISTORY=full|last|none` (default `full`) sets what the history tool returns. With `full` an
+     agent can re-read every result after compaction, so forgetting costs nothing. Use `none` for
+     memory comparisons: each result is shown once, in end_round's reply.
    ```
-   ours/run_bda.sh pilot_ours_30x16 codex 16000 30 16
-   ours/run_bda.sh pilot_base_30x16 codex-shipped 16000 30 16
+   HISTORY=none ours/run_bda.sh hpilot_ours_30x16 codex 16000 30 16
+   HISTORY=none ours/run_bda.sh hpilot_base_30x16 codex-shipped 16000 30 16
+   python3 -I ours/compare.py hpilot_ours_30x16 hpilot_base_30x16
    ```
+   Karen's isolated stack takes the same options: `bio/run_paired_pilot.py --gate --history none`.
 3. Audit: `python3 -I ours/audit_trace.py ours/runs/<run>` gives tool calls, input tokens per request,
    each compaction (tokens before and after), and isolation flags. macOS's sandbox lets the agent
    *read* the whole disk, so isolation here is detection: any shell or JavaScript command that touches
