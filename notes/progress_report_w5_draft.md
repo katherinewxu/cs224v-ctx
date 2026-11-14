@@ -39,11 +39,22 @@ DRAFT, updated Nov 14. Numbers are from `bio/RESULTS.md`; keep them in sync if a
 4. **The history tool was a perfect external memory.** With it, forgetting costs nothing, so the
    comparison can't show a memory effect. The evaluator now takes `--history full|last|none`; with
    `none` each result is shown once, in end_round's reply, and repeats measure forgetting.
+5. **With history off, the baseline starts to forget.** Same gated 30x16 pilot, `--history none`:
+
+   | Arm | Hits | Repeats | Compactions |
+   |---|---|---|---|
+   | Prototype | 14 | 0 | 25 |
+   | Plain Codex | 24 | 6 | 16 |
+
+   All 6 baseline repeats came in round 29, on genes first tested in rounds 1-26. Each of its
+   compactions freed less room (13.4K → 9.2K at first, 14.2K → 13.3K later), so by the end its
+   summary nearly filled the window. The prototype's files kept the tested set exact. Hits are near
+   random in both arms, so this shows a bookkeeping difference, not a discovery difference.
 
 ## Next steps
 
-1. **Gated pair with history off** (`HISTORY=none ours/run_bda.sh ...`), 30x16 at 16K: does the
-   prototype's memory now beat plain Codex on repeats and hits?
+1. **Scale the history-off pair:** 100x32 at 16K, where the tested set (3,200 IDs) can't fit in a
+   summary, and 3 seeds, so the repeat gap can be tested rather than read off one run.
 2. **Final runs on Karen's isolated stack** (`run_paired_pilot.py --gate --history none`), DepMap
    features, 3 seeds, then 100x32 at 16K and one run at the real 48K (batch 64 or about 200 rounds).
 3. **summary_set control** for our own policies, to split membership loss from score loss.
