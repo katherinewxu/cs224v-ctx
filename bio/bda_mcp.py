@@ -33,6 +33,8 @@ TOOLS = [
      NONE, "POST", "/end_round"),
     ("lookup", "Similar genes (8 nearest) for each given ID; limited IDs per round.", IDS, "POST", "/lookup"),
     ("history", "Every result you have observed so far: round, id, score, hit.", NONE, "GET", "/history"),
+    ("report", "When end_round says a report is due: the tested genes with the largest |score| so far, "
+               "from your own records. Scored by the evaluator; the score is not shown.", IDS, "POST", "/report"),
 ]
 HISTORY_DESC = {"full": TOOLS[-1][1], "last": "Results of the last closed round only: round, id, score, hit."}
 ROUTES = {name: (method, path) for name, _, _, method, path in TOOLS}
@@ -60,7 +62,7 @@ class Relay:
             return e.code, json.loads(e.read())
 
 
-def tool_list(history: str = "full") -> list[dict]:
+def tool_list(history: str = "full", report: bool = False) -> list[dict]:
     """history=none drops the tool (results are shown once, in end_round's reply); last relabels it."""
     out = []
     for n, d, s, _, _ in TOOLS:
@@ -68,11 +70,13 @@ def tool_list(history: str = "full") -> list[dict]:
             if history == "none":
                 continue
             d = HISTORY_DESC[history]
+        if n == "report" and not report:
+            continue
         out.append({"name": n, "description": d, "inputSchema": s})
     return out
 
 
-def handle(ev, msg: dict, history: str = "full"):
+def handle(ev, msg: dict, history: str = "full", report: bool = False):
     mid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
     if mid is None:  # notification (e.g. notifications/initialized)
         return None
@@ -82,10 +86,10 @@ def handle(ev, msg: dict, history: str = "full"):
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": tool_list(history)}
+        result = {"tools": tool_list(history, report)}
     elif method == "tools/call":
         name = params.get("name")
-        if name not in ROUTES or (name == "history" and history == "none"):
+        if name not in ROUTES or (name == "history" and history == "none") or (name == "report" and not report):
             return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": f"unknown tool {name}"}}
         verb, path = ROUTES[name]
         args = params.get("arguments") or {}
@@ -96,7 +100,7 @@ def handle(ev, msg: dict, history: str = "full"):
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def serve(ev, after=lambda: None, history: str = "full") -> None:
+def serve(ev, after=lambda: None, history: str = "full", report: bool = False) -> None:
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -106,7 +110,7 @@ def serve(ev, after=lambda: None, history: str = "full") -> None:
         except json.JSONDecodeError:
             out = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
         else:
-            out = handle(ev, msg, history)
+            out = handle(ev, msg, history, report)
         if out is not None:
             sys.stdout.write(json.dumps(out) + "\n")
             sys.stdout.flush()
@@ -132,22 +136,23 @@ def main() -> None:
                                   "(needed for multi-turn runs: Codex restarts MCP servers every turn)")
     ap.add_argument("--history", choices=HISTORY_MODES, default="full",
                     help="must match the evaluator's --history in relay mode (none hides the tool)")
+    ap.add_argument("--report-every", type=int, default=0, help="score-memory probe every K rounds (0 = off)")
     ap.add_argument("--out", help="required without --url")
     a = ap.parse_args()
     if a.url:
-        serve(Relay(a.url), history=a.history)
+        serve(Relay(a.url), history=a.history, report=a.report_every > 0)
         return
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
     seed = int.from_bytes(os.urandom(4), "big") if a.secret_seed else a.seed
     env = BioEnv(a.screen, rounds=a.rounds, batch=a.batch, anonymize=a.anonymize, seed=seed, features=a.features)
-    ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history)
+    ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history, a.report_every)
     out_dir = Path(a.out)
     (out_dir / "config.json").write_text(json.dumps(vars(a)))
     if a.secret_seed:
         (out_dir / "seed_sha256.txt").write_text(hashlib.sha256(str(seed).encode()).hexdigest() + "\n")
     revealed = [not a.secret_seed]
     serve(ev, lambda: None if revealed[0] or not env.done else (
-        (out_dir / "seed_revealed.txt").write_text(f"{seed}\n"), revealed.__setitem__(0, True)), a.history)
+        (out_dir / "seed_revealed.txt").write_text(f"{seed}\n"), revealed.__setitem__(0, True)), a.history, a.report_every > 0)
 
 
 if __name__ == "__main__":

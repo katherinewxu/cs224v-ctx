@@ -140,7 +140,14 @@ Mac with Apple silicon only. Needs read access to Yucheng's release repo and a C
    HISTORY=none ours/run_bda.sh hpilot_base_30x16 codex-shipped 16000 30 16
    python3 -I ours/compare.py hpilot_ours_30x16 hpilot_base_30x16
    ```
-   Karen's isolated stack takes the same options: `bio/run_paired_pilot.py --gate --history none`.
+   - `REPORT_EVERY=K` (default off) adds a score-memory probe: after every K-th and the last round
+     the agent must name its 10 tested genes with the largest |score| before proposing again. The
+     evaluator scores it (`report_score` in compare.py) without showing the agent. This needs exact
+     scores from early rounds, not just the tested set.
+   - `ours/run_series.sh PREFIX CW ROUNDS BATCH N_PAIRS [WALL_S]` runs N matched pairs, alternating arm
+     order, and stops before any arm once the weekly Codex quota passes `MAX_WEEKLY` (default 70%).
+   Karen's isolated stack takes the gate and history options: `bio/run_paired_pilot.py --gate --history none`
+   (no report probe there yet).
 3. Audit: `python3 -I ours/audit_trace.py ours/runs/<run>` gives tool calls, input tokens per request,
    each compaction (tokens before and after), and isolation flags. macOS's sandbox lets the agent
    *read* the whole disk, so isolation here is detection: any shell or JavaScript command that touches

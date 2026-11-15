@@ -27,6 +27,7 @@ def row(name: str) -> dict:
             "history": cfg.get("history", "full"), "gated": bool(cfg.get("round_token_hashes")),
             "rounds": t["rounds"], "tested": t["tested"], "hits": t["cum_hits"],
             "hit_ratio": round(t["hit_ratio"], 4), "recount_agrees": abs(ev["hit_ratio_recount"] - t["hit_ratio"]) < 1e-12,
+            "report_score": None if ev.get("report_score") is None else round(ev["report_score"], 3),
             "repeats": t["repeats"], "dup_in_batch": t["dup_in_batch"], "invalid": t["invalid"],
             "short_batches": t["short_batches"], "requests": au.get("requests"),
             "max_input_tokens": au.get("max_input_tokens"), "compactions": len(au.get("compactions", [])),
@@ -37,7 +38,7 @@ def row(name: str) -> dict:
 
 def main(names: list[str]) -> None:
     rows = [row(n) for n in names]
-    cols = ["name", "harness", "status", "gated", "history", "rounds", "hits", "repeats", "dup_in_batch", "short_batches",
+    cols = ["name", "harness", "status", "gated", "history", "rounds", "hits", "report_score", "repeats", "dup_in_batch", "short_batches",
             "requests", "max_input_tokens", "compactions", "isolation_flags", "input_tokens_total", "wall_min"]
     print("| " + " | ".join(cols) + " |\n|" + "---|" * len(cols))
     for r in rows:

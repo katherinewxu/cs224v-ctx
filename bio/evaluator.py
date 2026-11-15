@@ -9,6 +9,8 @@ and can only:
     POST /lookup    {"ids": [...]}  similar genes (up to --lookups IDs per round)
     GET  /history                   results already observed (--history full: all; last: the last
                                     closed round only; none: disabled, so results are seen once)
+    POST /report    {"ids": [...]}  (--report-every K) after every K-th and the last round: name the
+                                    tested genes with the largest |score| so far; scored, not revealed
     GET  /status                    round, batch, remaining budget
     GET  /help                      the text above, for the agent's instructions
 
@@ -62,10 +64,17 @@ class RoundGate:
 
 class Evaluator:
     def __init__(self, env: BioEnv, out: Path, proposals_per_round: int = 3, lookups_per_round: int = 4,
-                 gate: RoundGate | None = None, history_mode: str = "full"):
+                 gate: RoundGate | None = None, history_mode: str = "full", report_every: int = 0,
+                 report_n: int = 10):
         if history_mode not in HISTORY_MODES:
             raise ValueError(f"history_mode must be one of {HISTORY_MODES}")
         self.gate, self.history_mode = gate, history_mode
+        # Score-memory probe: after every report_every-th round (and the last), the agent must name the
+        # report_n tested genes with the largest |score| before it may propose again. Needs exact scores
+        # from early rounds, so a memory that keeps only the tested set loses points here.
+        self.report_every, self.report_n = report_every, report_n
+        self.report_due: int | None = None
+        self.reports: list[dict] = []
         self.on_done = None
         self.env, self.out = env, Path(out)
         self.out.mkdir(parents=True, exist_ok=True)
@@ -86,7 +95,7 @@ class Evaluator:
                 "proposals_left": self.max_props - self.props_used,
                 "lookups_left": self.max_lookups - self.lookups_used, "n_genes": len(e.ids),
                 "tested": len(e.tested), "cum_hits": e.log[-1].cum_hits if e.log else 0,
-                "history": self.history_mode}
+                "history": self.history_mode, "report_due": self.report_due}
 
     def propose(self, ids, token=None) -> dict:
         e = self.env
@@ -94,6 +103,8 @@ class Evaluator:
             return {"error": "episode finished"}
         if self.gate and (err := self.gate.check(e.round + 1, token)):
             return {"error": err}
+        if self.report_due is not None:
+            return {"error": f"report due for round {self.report_due}: call report first"}
         if self.props_used >= self.max_props:
             return {"error": f"proposal limit ({self.max_props}) reached for this round; call /end_round"}
         if not isinstance(ids, list) or len(ids) > 4 * e.batch:
@@ -120,6 +131,10 @@ class Evaluator:
         out = {"round": log.round + 1, "results": [{"id": g, "score": round(log.revealed[g], 4),
                                                     "hit": g in log.hits} for g in log.accepted],
                "short_by": e.batch - len(log.accepted), "cum_hits": log.cum_hits, "rounds_left": e.rounds - e.round}
+        if self.report_every and ((log.round + 1) % self.report_every == 0 or e.done):
+            self.report_due = log.round + 1
+            out["report_due"] = (f"Before anything else, call report with the {self.report_n} genes you have "
+                                 f"tested whose |score| is largest so far (from your own records).")
         if self.gate and not e.done:
             out["next"] = "Round closed. Stop here and end your turn; the next user message gives the next round's token."
         return out
@@ -132,6 +147,23 @@ class Evaluator:
         self.lookups_used += len(ids)
         return {"neighbors": {g: [h for h, _ in self.env.lookup(g)] for g in ids},
                 "lookups_left": self.max_lookups - self.lookups_used}
+
+    def report(self, ids) -> dict:
+        if self.report_due is None:
+            return {"error": "no report is due now"}
+        if not isinstance(ids, list):
+            return {"error": "ids must be a list"}
+        e, n = self.env, self.report_n
+        scores = {g: abs(v) for l in e.log for g, v in l.revealed.items() if g in l.accepted}
+        cut = sorted(scores.values(), reverse=True)[min(n, len(scores)) - 1] if scores else 0.0
+        named = list(dict.fromkeys(str(g) for g in ids))[:n]
+        correct = sum(1 for g in named if g in scores and scores[g] >= cut)  # ties at the cut count
+        rec = {"after_round": self.report_due, "n": n, "correct": correct,
+               "untested": sum(1 for g in named if g not in scores), "named": named}
+        self.reports.append(rec)
+        self.report_due = None
+        self._save()
+        return {"recorded": True, "after_round": rec["after_round"], "named": len(named)}
 
     def history(self) -> dict:
         e = self.env
@@ -153,7 +185,9 @@ class Evaluator:
         res = {"status": "complete" if e.done else "partial", "n_requests": self.n_requests,
                "wall_s": round(time.time() - self.t0, 1), "totals": e.totals(),
                "hit_ratio_recount": e.hit_ratio_by_analyze() if e.log else 0.0,
-               "curve": [l.hit_ratio for l in e.log], "rounds": [asdict(l) for l in e.log], "tested": e.tested}
+               "curve": [l.hit_ratio for l in e.log], "reports": self.reports,
+               "report_score": (sum(r["correct"] for r in self.reports) / (self.report_n * len(self.reports))
+                                if self.reports else None), "rounds": [asdict(l) for l in e.log], "tested": e.tested}
         tmp = self.out / "run.json.tmp"
         tmp.write_text(json.dumps(res))
         tmp.replace(self.out / "run.json")
@@ -164,7 +198,8 @@ class Evaluator:
                       ("GET", "/help"): lambda: {"help": HELP},
                       ("POST", "/propose"): lambda: self.propose((body or {}).get("ids"), (body or {}).get("round_token")),
                       ("POST", "/end_round"): lambda: self.end_round(),
-                      ("POST", "/lookup"): lambda: self.lookup((body or {}).get("ids"))}
+                      ("POST", "/lookup"): lambda: self.lookup((body or {}).get("ids")),
+                      ("POST", "/report"): lambda: self.report((body or {}).get("ids"))}
             fn = routes.get((method, path))
             resp = fn() if fn else {"error": f"unknown endpoint {method} {path}"}
             code = 404 if not fn else 400 if "error" in resp else 200
@@ -218,12 +253,14 @@ def main() -> None:
     ap.add_argument("--history", choices=HISTORY_MODES, default="full",
                     help="full: /history returns every result; last: only the last closed round; none: disabled "
                          "(the agent must keep its own record, so memory survives compaction or it doesn't)")
+    ap.add_argument("--report-every", type=int, default=0, help="score-memory probe every K rounds (0 = off)")
+    ap.add_argument("--report-n", type=int, default=10)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     seed = int.from_bytes(os.urandom(4), "big") if a.secret_seed else a.seed
     env = BioEnv(a.screen, rounds=a.rounds, batch=a.batch, anonymize=a.anonymize, seed=seed, features=a.features)
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
-    ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history)
+    ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history, a.report_every, a.report_n)
     out = Path(a.out)
     (out / "config.json").write_text(json.dumps(vars(a)))
     if a.secret_seed:

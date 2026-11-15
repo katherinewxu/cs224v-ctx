@@ -117,3 +117,24 @@ def test_history_modes(tmp_path, mode):
     assert ev.status()["history"] == mode
     with pytest.raises(ValueError):
         Evaluator(env, tmp_path / "ev2", history_mode="bogus")
+
+
+def test_report_probe_scores_score_memory(tmp_path):
+    """Every K rounds and at the end: name the top-|score| tested genes; propose is blocked until then."""
+    env = BioEnv(toy_screen(), rounds=3, batch=2, anonymize=True, features=False)
+    ev = Evaluator(env, tmp_path / "ev", report_every=2, report_n=2)
+    g = env.ids
+    ev.propose(g[0:2]); assert "report_due" not in ev.end_round()
+    ev.propose(g[2:4]); assert "report_due" in ev.end_round()
+    assert "report due" in ev.propose([g[4]])["error"]
+    scores = {x: abs(v) for l in env.log for x, v in l.revealed.items()}
+    top = sorted(scores, key=scores.get, reverse=True)
+    r = ev.report([top[0], "NOT_TESTED", top[0]])
+    assert r["recorded"] and "correct" not in r  # the score is not revealed
+    assert ev.reports[-1]["correct"] == 1 and ev.reports[-1]["untested"] == 1
+    assert "error" in ev.report(top[:2])  # none due
+    ev.propose(g[4:6]); assert "report_due" in ev.end_round()  # last round
+    scores = {x: abs(v) for l in env.log for x, v in l.revealed.items()}
+    ev.report(sorted(scores, key=scores.get, reverse=True)[:2])
+    run = json.loads((ev.out / "run.json").read_text())
+    assert len(run["reports"]) == 2 and run["reports"][1]["correct"] == 2 and run["report_score"] == 0.75
