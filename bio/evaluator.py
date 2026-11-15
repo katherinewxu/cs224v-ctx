@@ -123,6 +123,11 @@ class Evaluator:
         e = self.env
         if e.done:
             return {"error": "episode finished"}
+        if self.gate and (e.round + 1) not in self.gate.opened:
+            # Without this an agent that skips ahead can close a round it never opened; the evaluator then
+            # runs one round ahead of the user messages and every later token is rejected (Nov 14 baseline).
+            return {"error": f"round {e.round + 1} is not open, so it cannot be closed: wait for the next user "
+                             f"message and propose with its round_token first"}
         log = e.end_round()
         self.props_used = self.lookups_used = 0
         self._save()

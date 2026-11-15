@@ -135,6 +135,9 @@ class Evaluator:
                     "invalid": list(cur.invalid), "repeats": list(cur.repeats),
                     "duplicates": list(cur.dup_in_batch), "overflow": list(cur.overflow),
                     "remaining": env.remaining_in_batch()}
+        if self.round_token_hashes and env.round + 1 not in self.opened:
+            raise ValueError(f"Round {env.round + 1} is not open, so it cannot be closed: wait for the next user "
+                             f"message and propose with its round_token first")
         env.end_round()
         self.proposals = self.lookups = 0
         out = {"completed_round": env.round, "done": env.done}

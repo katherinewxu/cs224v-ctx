@@ -138,3 +138,15 @@ def test_report_probe_scores_score_memory(tmp_path):
     ev.report(sorted(scores, key=scores.get, reverse=True)[:2])
     run = json.loads((ev.out / "run.json").read_text())
     assert len(run["reports"]) == 2 and run["reports"][1]["correct"] == 2 and run["report_score"] == 0.75
+
+
+def test_gate_refuses_to_close_unopened_round(tmp_path):
+    """Regression (Nov 14): end_round on a never-opened round desynced the evaluator from the messages."""
+    import hashlib
+    from evaluator import RoundGate
+    env = BioEnv(toy_screen(), rounds=3, batch=1, anonymize=True, features=False)
+    ev = Evaluator(env, tmp_path / "ev", gate=RoundGate([hashlib.sha256(t.encode()).hexdigest() for t in "abc"]))
+    assert ev.propose([env.ids[0]], "a")["accepted"] and "results" in ev.end_round()
+    assert "not open" in ev.propose([env.ids[1]], "a")["error"]  # old token
+    assert "not open" in ev.end_round()["error"] and env.round == 1  # round 2 stays open for its token
+    assert ev.propose([env.ids[1]], "b")["accepted"] and "results" in ev.end_round()

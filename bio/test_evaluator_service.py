@@ -199,6 +199,7 @@ def test_round_gate_requires_each_rounds_token(tmp_path):
     status, r = call("4", "end_round", {})
     assert status == 200 and "next" in r
     assert call("5", "propose", {"ids": [g[1]], "round_token": "a1"})[0] == 400
+    assert call("5b", "end_round", {})[0] == 400 and env.round == 1  # can't close an unopened round
     assert call("6", "propose", {"ids": [g[1]], "round_token": "b2"})[0] == 200
     status, r = call("7", "end_round", {})
     assert r["done"] and "next" not in r

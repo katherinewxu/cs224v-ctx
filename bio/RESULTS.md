@@ -458,6 +458,24 @@ Reading:
 - Next: a harder memory load (100x32 at 16K, where the tested set no longer fits in a summary),
   more seeds, and a score-dependent task so memory affects hits, not just repeats.
 
+### 100x32, 16K window, history off, report every 10 rounds (2026-11-14, week-2 features)
+
+| arm | hits | repeats | top-10 reports correct | compactions | model requests | wall |
+|---|---|---|---|---|---|---|
+| prototype (`codex`) | 314 | 0 | 10/10 at all 10 checkpoints | 103 | 1,025 | 1h40 |
+| baseline (`codex-shipped`) | 93 by round 28, then invalid | 8 | 10, 10, 9, 9 | 98 by round 44 | | stopped at 3h40 |
+
+- The prototype played every round (one turn per round, 0 isolation flags) and kept the tested set,
+  scores and lookups in its files. Hits are inflated for both arms by the leaky week-2 features.
+- **Gate bug:** after closing round 28 the baseline kept going in the same turn, proposed with the
+  old token (rejected), then called end_round. The evaluator closed round 29 empty without it ever
+  being opened, and from then on ran one round ahead of the user messages: every later token was
+  for the wrong round, so rounds 29-44 accepted 0 genes. Fixed: end_round now refuses a round that
+  was never opened (`evaluator.py` and `evaluator_service.py`, with regression tests). All earlier
+  gated runs were checked: no empty rounds.
+- The baseline was stopped at round 44; seeds 1-2 were cancelled to save quota (13% → 34% weekly).
+  Rerun as a DepMap pair with the fixed gate (`dm_*_s0`).
+
 ### Karen's paired runs (Nov 10-13, ungated, 48K window, DepMap, restricted sandbox)
 
 | pair | prototype | baseline | diff | model requests (proto/base) | compactions |
