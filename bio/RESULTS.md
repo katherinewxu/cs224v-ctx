@@ -476,6 +476,28 @@ Reading:
 - The baseline was stopped at round 44; seeds 1-2 were cancelled to save quota (13% → 34% weekly).
   Rerun as a DepMap pair with the fixed gate (`dm_*_s0`).
 
+### DepMap 100x32, 16K window, history off, report every 10 rounds, fixed gate (2026-11-15, `dm_*_s0`)
+
+| arm | hits | cross-round repeats | top-10 reports correct | compactions | model requests | input tokens | wall |
+|---|---|---|---|---|---|---|---|
+| prototype (`codex`) | 229 | 0 | 10/10 at all 10 checkpoints | 99 | 986 | 12.4M | 2h02 |
+| baseline (`codex-shipped`) | 212 | 0 | 10/10 at all 10 checkpoints | 44 | 437 | 5.2M | 46 min |
+
+- Random picks would average about 160 hits (3,200 of 18,418 genes, 920 hits). Both arms beat
+  random by a similar margin. Hits by round 10/30/50: prototype 38/90/129, baseline 28/91/129.
+- Both arms played all 100 rounds, one turn per round, with no gate errors, no empty rounds and
+  0 isolation flags.
+- The prototype's `repeats: 16` are all from round 1: it resent IDs it had already proposed that
+  round, and the evaluator rejected them. That is not forgetting; it still got 32 new genes that round.
+- **No memory gap.** With the history tool removed, plain Codex wrote every round's results to its
+  own files (`workspace/screen_records/round_NNN.json`, 100 files) and read them back. The prototype
+  kept its own files too (`data_structures/scores.jsonl`, `neighbors.jsonl`). Both had an exact
+  external memory, so neither forgot anything and the report probe was saturated.
+  The earlier history-off baselines (`hpilot_base_30x16`, `long_base_s0`) wrote no files and did
+  forget (6 and 8 repeats, reports down to 9/10), so whether plain Codex writes files varies by run.
+- Cost: the prototype used 2.4x the input tokens and 2.3x the requests of the baseline for +17 hits
+  (one seed). Weekly quota went 34% → 44%.
+
 ### Karen's paired runs (Nov 10-13, ungated, 48K window, DepMap, restricted sandbox)
 
 | pair | prototype | baseline | diff | model requests (proto/base) | compactions |

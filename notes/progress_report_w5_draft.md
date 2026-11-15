@@ -1,6 +1,6 @@
 # Progress report draft (due Mon Nov 16)
 
-DRAFT, updated Nov 14. Numbers are from `bio/RESULTS.md`; keep them in sync if anything is rerun.
+DRAFT, updated Nov 15. Numbers are from `bio/RESULTS.md`; keep them in sync if anything is rerun.
 
 ## Where we are
 
@@ -51,14 +51,32 @@ DRAFT, updated Nov 14. Numbers are from `bio/RESULTS.md`; keep them in sync if a
    summary nearly filled the window. The prototype's files kept the tested set exact. Hits are near
    random in both arms, so this shows a bookkeeping difference, not a discovery difference.
 
+6. **At 100x32 on DepMap, plain Codex builds its own memory.** Gated, 16K, history off, a top-10
+   score report every 10 rounds, one seed:
+
+   | Arm | Hits | Repeats | Reports correct | Compactions | Input tokens |
+   |---|---|---|---|---|---|
+   | Prototype | 229 | 0 | 100/100 | 99 | 12.4M |
+   | Plain Codex | 212 | 0 | 100/100 | 44 | 5.2M |
+
+   Random averages about 160. With no history tool, plain Codex wrote each round's results to a
+   file and read them back, so both arms had an exact memory on disk and nothing was forgotten.
+   The probe can't separate them while the agent can write files: the memory gap we saw at 30x16
+   came from baselines that wrote no files (as did the 100x32 week-2 baseline, which repeated 8 genes
+   before the gate bug). Whether plain Codex writes files varies by run.
+
 ## Next steps
 
-1. **Scale the history-off pair:** 100x32 at 16K, where the tested set (3,200 IDs) can't fit in a
+1. **Decide whether file writes are in scope.** Either count self-made files as part of the
+   harness being compared (then the task needs pressure files don't solve, e.g. reasoning over
+   many past results per round), or forbid workspace writes for both arms to test in-context
+   memory alone. Question for Yucheng.
+2. **Scale the history-off pair:** 100x32 at 16K, where the tested set (3,200 IDs) can't fit in a
    summary, and 3 seeds, so the repeat gap can be tested rather than read off one run.
-2. **Final runs on Karen's isolated stack** (`run_paired_pilot.py --gate --history none`), DepMap
+3. **Final runs on Karen's isolated stack** (`run_paired_pilot.py --gate --history none`), DepMap
    features, 3 seeds, then 100x32 at 16K and one run at the real 48K (batch 64 or about 200 rounds).
-3. **summary_set control** for our own policies, to split membership loss from score loss.
-4. **Baselines on DepMap** (random, UCB, prior), so LLM hits have a reference.
+4. **summary_set control** for our own policies, to split membership loss from score loss.
+5. **Baselines on DepMap** (random, UCB, prior), so LLM hits have a reference.
 
 ## Benchmark design ideas
 
@@ -76,5 +94,5 @@ DRAFT, updated Nov 14. Numbers are from `bio/RESULTS.md`; keep them in sync if a
 - The prototype ships only for Apple silicon and the release is not for redistribution.
 - Usage: a gated 30x16 pair used about 3% of the weekly Codex quota; 100x32 pairs with 3 seeds will
   use much more, and the prototype arm uses about 1.8x the tokens of the baseline.
-- One seed so far, and the week-2 features leak from the IL2 screen until DepMap is in: all results
-  are pilot observations.
+- One seed per setting so far: all results are pilot observations. DepMap features are in (first
+  pair Nov 15); the earlier runs used the week-2 features, which leak from the IL2 screen.
