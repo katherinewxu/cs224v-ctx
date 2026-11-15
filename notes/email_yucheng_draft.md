@@ -28,7 +28,7 @@ scores (the model answers 4 of 381 recall probes correctly). We're adding a cont
 summary plus the exact tested-ID list to separate the two.
 
 **Prototype status.** We have the release (pinned to 2026.11.09-166c433f). The BDA task runs through an
-MCP server, so scores and gene names stay outside the agent, and every compaction is traced. Two findings:
+MCP server, so scores and gene names stay outside the agent, and every compaction is traced. Findings so far:
 
 - *Agents script the episode.* Given one message, both the prototype and `codex-shipped` wrote a loop
   that played all rounds itself, so context never grew (10-21 model requests per 100-round run, no
@@ -36,19 +36,35 @@ MCP server, so scores and gene names stay outside the agent, and every compactio
   user message, so the agent takes one turn per round.
 - *Gated pilot (30 rounds x 16, `--context-window 16000`, one seed):* the prototype compacted 28 times
   and got 28 hits; the baseline compacted 23 times and got 54 hits; neither repeated a gene. But the
-  baseline kept track by re-reading our history tool 41 times, which made forgetting free. We've
-  removed that tool for the next pair, so each result is shown once and has to survive compaction.
+  baseline kept track by re-reading our history tool 41 times, which made forgetting free, so we
+  removed that tool: each result is now shown once and has to survive compaction.
+- *Without the history tool, the baseline forgot at first.* At 30x16 it repeated 6 genes (all in the
+  last round, first tested 3-28 rounds earlier); the prototype repeated none.
+- *DepMap, 100 rounds x 32, 16K, history off, one seed:* we also ask every 10 rounds for the 10 tested
+  genes with the largest |score|. Prototype 229 hits, baseline 212 (random about 160); both 0 repeats
+  and 100/100 report answers correct; 99 vs. 44 compactions, 12.4M vs. 5.2M input tokens. This time
+  plain Codex wrote each round's results to a file in its workspace and read them back, so both arms
+  had an exact memory on disk. Earlier baselines wrote no files and did forget, so this varies by run.
 
 **Questions.**
-1. Is `--harness codex-shipped` the right baseline, i.e. the same runtime with the structured memory off?
-2. Is `--context-window 16000` a reasonable setting for the pilot, or would you set it differently
+1. **The main one: what should the comparison isolate?** The prototype's memory is files the agent
+   writes itself (it appends each round's results to `data_structures/scores.jsonl` with shell
+   commands), and plain Codex sometimes improvises the same thing (one file per round). When it does,
+   both arms have an exact record and the memory test is saturated. When it doesn't (our earlier runs),
+   it forgets. Blocking workspace writes for both arms would also switch off the prototype's own
+   mechanism, so we don't think that's fair. Options we see: (a) count improvised files as fair and
+   compare on tasks where a flat log isn't enough (e.g. each round needs reasoning over many past
+   results, or the record outgrows what can be re-read cheaply), plus cost per hit; (b) block writes
+   only for the baseline, i.e. compare against a no-file-memory Codex. Which do you want?
+2. Is `--harness codex-shipped` the right baseline, i.e. the same runtime with the structured memory off?
+3. Is `--context-window 16000` a reasonable setting for the pilot, or would you set it differently
    (or use `--catalog-share`)?
-3. On macOS the default Codex sandbox can read the whole disk. Karen wrote a restricted seatbelt profile
+4. On macOS the default Codex sandbox can read the whole disk. Karen wrote a restricted seatbelt profile
    that blocks reads of the repo and task data, and we also scramble gene IDs with a secret seed and
    audit the trace. Is there a supported way to restrict reads (or a Linux build with bubblewrap)?
-4. Is gating one round per user message (with `--follow-up`) a fair way to use the prototype, or is
+5. Is gating one round per user message (with `--follow-up`) a fair way to use the prototype, or is
    there a mode you'd rather we use for long multi-turn tasks?
-5. Monica and you mentioned the benchmark needs to be harder for long horizons. Is ~150-200 rounds on
+6. Monica and you mentioned the benchmark needs to be harder for long horizons. Is ~150-200 rounds on
    this screen what you had in mind, or would you rather we add a second screen or tasks with more
    cross-round dependencies?
 

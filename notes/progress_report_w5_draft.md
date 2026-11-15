@@ -59,7 +59,8 @@ DRAFT, updated Nov 15. Numbers are from `bio/RESULTS.md`; keep them in sync if a
    | Prototype | 229 | 0 | 100/100 | 99 | 12.4M |
    | Plain Codex | 212 | 0 | 100/100 | 44 | 5.2M |
 
-   Random averages about 160. With no history tool, plain Codex wrote each round's results to a
+   Random averages 153, kNN 286, UCB 338 and a no-feedback prior 351 (5 seeds each), but those
+   use every gene's full DepMap profile while the agents see only neighbor lists. With no history tool, plain Codex wrote each round's results to a
    file and read them back, so both arms had an exact memory on disk and nothing was forgotten.
    The probe can't separate them while the agent can write files: the memory gap we saw at 30x16
    came from baselines that wrote no files (as did the 100x32 week-2 baseline, which repeated 8 genes
@@ -67,16 +68,19 @@ DRAFT, updated Nov 15. Numbers are from `bio/RESULTS.md`; keep them in sync if a
 
 ## Next steps
 
-1. **Decide whether file writes are in scope.** Either count self-made files as part of the
-   harness being compared (then the task needs pressure files don't solve, e.g. reasoning over
-   many past results per round), or forbid workspace writes for both arms to test in-context
-   memory alone. Question for Yucheng.
+1. **Decide what the comparison isolates.** The prototype's memory is also agent-written files (it
+   appends results to `data_structures/scores.jsonl`), so blocking writes for both arms would switch
+   off its own mechanism. Options: compare on tasks where a flat log isn't enough, plus cost per hit;
+   or block writes only for the baseline. `compare.py` now reports each run's workspace file count,
+   so improvised file memory is visible. Question for Yucheng.
 2. **Scale the history-off pair:** 100x32 at 16K, where the tested set (3,200 IDs) can't fit in a
    summary, and 3 seeds, so the repeat gap can be tested rather than read off one run.
 3. **Final runs on Karen's isolated stack** (`run_paired_pilot.py --gate --history none`), DepMap
    features, 3 seeds, then 100x32 at 16K and one run at the real 48K (batch 64 or about 200 rounds).
 4. **summary_set control** for our own policies, to split membership loss from score loss.
-5. **Baselines on DepMap** (random, UCB, prior), so LLM hits have a reference.
+5. **Information-matched baselines:** kNN/UCB that see only what the agent sees (neighbor lists
+   for 4 genes per round), or give the agent the profile-size signal, so LLM hits vs. baselines
+   compares strategy rather than access to features.
 
 ## Benchmark design ideas
 

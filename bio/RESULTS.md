@@ -495,6 +495,12 @@ Reading:
   external memory, so neither forgot anything and the report probe was saturated.
   The earlier history-off baselines (`hpilot_base_30x16`, `long_base_s0`) wrote no files and did
   forget (6 and 8 repeats, reports down to 9/10), so whether plain Codex writes files varies by run.
+- **Reference baselines, DepMap 100x32, 5 seeds** (`bio/runs/baselines_depmap_100x32.json`): random
+  153 (148-161), kNN 286 (250-315), UCB 338 (316-362), prior 351 (same every seed). Both LLM arms
+  (229, 212) sit between random and kNN. The baselines are not information-matched: they use every
+  gene's full DepMap profile, while the agents see only 8 neighbors for up to 4 genes per round.
+  `prior` (rank once by profile size, no feedback) reaching 38% of hits says a gene's DepMap
+  profile alone predicts strong IFNG effects; the agents can't see that signal.
 - Cost: the prototype used 2.4x the input tokens and 2.3x the requests of the baseline for +17 hits
   (one seed). Weekly quota went 34% → 44%.
 
