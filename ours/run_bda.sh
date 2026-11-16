@@ -11,9 +11,12 @@
 #     times). none removes the tool: each result is shown once, in end_round's reply.
 #   REPORT_EVERY=K (default 0 = off): after every K-th and the last round the agent must name its 10 tested
 #     genes with the largest |score| before proposing again (needs exact scores, not just the tested set).
+#   NOFILES=1 (default 0): tell the plain-Codex arm (codex-shipped only) not to create or write files, so it has
+#     to keep results in its context; the prototype keeps its own file memory. Enforced by instruction only (ours run
+#     has no write-blocking flag); compare.py's workspace_files column shows whether it complied.
 # Evaluator state, requests and scoring go to ours/evals/NAME (outside the agent workspace).
 set -eu
-NAME=$1; HARNESS=$2; CW=$3; R=$4; B=$5; WALL=${6:-3600}; GATE=${GATE:-1}; HISTORY=${HISTORY:-full}; REPORT_EVERY=${REPORT_EVERY:-0}
+NAME=$1; HARNESS=$2; CW=$3; R=$4; B=$5; WALL=${6:-3600}; GATE=${GATE:-1}; HISTORY=${HISTORY:-full}; REPORT_EVERY=${REPORT_EVERY:-0}; NOFILES=${NOFILES:-0}
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(dirname "$HERE")
 EVAL="$HERE/evals/$NAME"; [ -e "$EVAL" ] && { echo "exists: $EVAL"; exit 1; }
 mkdir -p "$HERE/evals" "$HERE/runs" "$HERE/seed_empty" "$HERE/mcp"
@@ -41,6 +44,7 @@ case "$HISTORY" in
   last) TASK="$TASK The history tool returns only the last closed round's results; older results are shown once, in end_round's reply, so keep whatever record you need." ;;
 esac
 [ "$REPORT_EVERY" -gt 0 ] && TASK="$TASK Every $REPORT_EVERY rounds and after the last round, end_round will say a report is due: call report with the 10 genes you have tested whose |score| is largest so far, before proposing again. Report accuracy is scored along with hits."
+[ "$NOFILES" = 1 ] && [ "$HARNESS" = codex-shipped ] && TASK="$TASK Do not create, write or modify any files (no scripts, notes or logs on disk): keep everything you need in this conversation."
 FOLLOW=()
 if [ "$GATE" = 1 ]; then
   PROMPT="$TASK Rounds are run one per message: each message gives that round's round_token, which you must pass to propose. Run only that round, call end_round, then stop and wait for the next message. This is round 1 of $R; round_token: ${TOKENS[0]}"
@@ -52,7 +56,7 @@ else
   PROMPT="$TASK Keep going until status reports done, then reply with the total number of hits."
 fi
 
-echo "$(date) ours run $NAME harness=$HARNESS cw=$CW ${R}x${B} gate=$GATE history=$HISTORY report_every=$REPORT_EVERY" | tee -a "$HERE/runs.log"
+echo "$(date) ours run $NAME harness=$HARNESS cw=$CW ${R}x${B} gate=$GATE history=$HISTORY report_every=$REPORT_EVERY nofiles=$NOFILES" | tee -a "$HERE/runs.log"
 MI=(); [ "$HARNESS" = codex ] && MI=(--model-info-dir "$HERE/model_info")
 ~/.ours/bin/ours run --harness "$HARNESS" --model gpt-6.1-terra --context-window "$CW" --lane subscription \
   ${MI[@]+"${MI[@]}"} --prompt "$PROMPT" ${FOLLOW[@]+"${FOLLOW[@]}"} --task "$NAME" --seed "$HERE/seed_empty" \

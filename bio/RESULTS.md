@@ -501,6 +501,11 @@ Reading:
   gene's full DepMap profile, while the agents see only 8 neighbors for up to 4 genes per round.
   `prior` (rank once by profile size, no feedback) reaching 38% of hits says a gene's DepMap
   profile alone predicts strong IFNG effects; the agents can't see that signal.
+- **Information-matched baseline** (`nbr`, `bio/runs/baselines_depmap_nbr_100x32.json`, 5 seeds): no
+  feature vectors, only the evaluator's own lookup (8 neighbours, up to 4 genes per round). Each round
+  it looks up its best tested genes and proposes their untested neighbours, filling with random picks.
+  221 hits (215-226); by round 10/30/50: 21/80/130. Both LLM arms (229, 212; 38/90/129 and 28/91/129)
+  match it: with the same information, neither agent beats a two-line heuristic yet.
 - Cost: the prototype used 2.4x the input tokens and 2.3x the requests of the baseline for +17 hits
   (one seed). Weekly quota went 34% → 44%.
 

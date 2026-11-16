@@ -146,6 +146,10 @@ Mac with Apple silicon only. Needs read access to Yucheng's release repo and a C
      scores from early rounds, not just the tested set.
    - `ours/run_series.sh PREFIX CW ROUNDS BATCH N_PAIRS [WALL_S]` runs N matched pairs, alternating arm
      order, and stops before any arm once the weekly Codex quota passes `MAX_WEEKLY` (default 70%).
+   - `NOFILES=1`: tells the plain-Codex arm only not to write files (by instruction; `compare.py`'s
+     `workspace_files` column shows whether it complied). The prototype keeps its own file memory.
+   - `ours/run_list.sh CW ROUNDS BATCH WALL_S NAME:HARNESS[:ENV=VAL,...] ...` runs arms in order with the
+     same quota guard, e.g. `nf_base_s0:codex-shipped:NOFILES=1 dm_ours_s1:codex`.
    Karen's isolated stack takes the gate and history options: `bio/run_paired_pilot.py --gate --history none`
    (no report probe there yet).
 3. Audit: `python3 -I ours/audit_trace.py ours/runs/<run>` gives tool calls, input tokens per request,

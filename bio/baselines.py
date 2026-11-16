@@ -6,6 +6,10 @@
     knn          greedy: predicted value of an untested gene = mean y over its k
                  nearest *tested* genes in feature space; y = hit + 0.01*|z|
     ucb          knn mean + beta * (mean distance to those neighbours)
+    nbr          information-matched with the LLM agents: no feature vectors, only what the evaluator
+                 exposes. Each round it looks up (8 neighbours each) the up-to-4 tested genes with the
+                 largest |score| not yet looked up, then proposes untested neighbours ranked by their best
+                 parent (hit first, then |score|), filling the rest of the batch at random.
 
 Round 1 of knn/ucb is random (no observations yet).
 
@@ -44,12 +48,30 @@ def _knn_scores(X, tested_idx, y, untested_idx, k=10, beta=0.0, chunk=2048):
     return out
 
 
+def _nbr_pick(env, tested_mask, untested, st, batch, lookups, rng):
+    """Info-matched greedy: lookups on the best tested genes, propose their untested neighbours."""
+    seen = {g: (env.is_hit(g), abs(float(v))) for l in env.log for g, v in l.revealed.items()}
+    best = sorted((g for g in seen if g not in st["looked"]), key=lambda g: seen[g], reverse=True)[:lookups]
+    for g in best:
+        st["looked"].add(g)
+        for h, _ in env.lookup(g):
+            st["cand"][h] = max(st["cand"].get(h, (False, 0.0)), seen[g])
+    ranked = sorted((h for h in st["cand"] if not tested_mask[env.index[h]]), key=lambda h: st["cand"][h], reverse=True)
+    pick = [env.index[h] for h in ranked[:batch]]
+    if len(pick) < batch:
+        chosen = set(pick)
+        rest = np.array([i for i in untested if i not in chosen])
+        pick += list(rng.choice(rest, size=min(batch - len(pick), len(rest)), replace=False))
+    return np.array(pick)
+
+
 def run_policy(policy: str, screen: str, rounds: int, batch: int, seed: int, anonymize: bool,
-               k: int = 10, beta: float = 0.05, features: str = "screens") -> BioEnv:
+               k: int = 10, beta: float = 0.05, features: str = "screens", lookups: int = 4) -> BioEnv:
     env = BioEnv(screen, rounds=rounds, batch=batch, anonymize=anonymize, seed=seed, features=features)
     rng = np.random.default_rng(1000 + seed)
     X = env.features.X
     n = len(env.ids)
+    nbr_state = {"looked": set(), "cand": {}}
     prior_order = np.argsort(-np.linalg.norm(X, axis=1) + 1e-6 * rng.random(n))
     while not env.done:
         tested_mask = np.zeros(n, bool)
@@ -59,6 +81,8 @@ def run_policy(policy: str, screen: str, rounds: int, batch: int, seed: int, ano
             pick = rng.choice(untested, size=min(batch, len(untested)), replace=False)
         elif policy == "prior":
             pick = [i for i in prior_order if not tested_mask[i]][:batch]
+        elif policy == "nbr":
+            pick = _nbr_pick(env, tested_mask, untested, nbr_state, batch, lookups, rng)
         elif policy in ("knn", "ucb"):
             tidx = np.flatnonzero(tested_mask)
             observed_abs = np.abs(env._score[tidx])
