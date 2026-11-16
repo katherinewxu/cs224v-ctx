@@ -524,10 +524,30 @@ new rule (an upper bound on the loss: the agent never saw the cost, and dropped 
 | dm_base_s0 (plain Codex, files) | 212 | 212 | 0 |
 | nf_base_s0 (plain Codex, no files) | 211 | 180 | 627 |
 | dm_ours_s1 (prototype, seed 1) | 210 | 210 | 0 |
+| nf_base_s1 (plain Codex, no files, seed 1) | 215 | 176 | 815 |
+| dm_ours_s2 (prototype, seed 2) | 223 | 223 | 0 |
 
 `nf_base_s0`: told not to write files, it complied (0 workspace files), proposed 811 already-tested
 genes over 92 rounds (from round 4 on), and still named the top 10 correctly at every report. It kept
 the short top list through compaction but not the 3,200-gene tested set.
+
+**Seeds (Nov 16).** `nf_base_s1`: 0 files, 1,167 repeats over 69 rounds (first in round 21), 100/100
+reports, 187 compactions, 7.8M input tokens, 4h53 (slow: most turns re-proposed tested genes).
+`dm_ours_s2`: 0 repeats, 100/100 reports, 105 compactions, 12.9M input tokens. No gate errors or
+empty rounds in either. `nf_base_s2` was not run: the list's quota guard stopped at 80% weekly
+(limit 75%; resets Fri Nov 20).
+
+| arm | seeds | hits | mean | if repeats cost a slot | repeats | reports |
+|---|---|---|---|---|---|---|
+| prototype | 3 | 229 / 210 / 223 | 221 | 228 / 210 / 223 | 16 / 0 / 0 | 100/100 each |
+| plain Codex, no files (`NOFILES=1`) | 2 | 211 / 215 | 213 | 180 / 176 | 811 / 1,167 | 100/100 each |
+| plain Codex, files allowed | 1 | 212 | 212 | 212 | 0 | 100/100 |
+| `nbr` (no LLM) | 5 | 215-226 | 221 | (no repeats) | 0 | – |
+
+Reading: under the current scoring all arms tie with `nbr` (~210-230). Without files, plain Codex
+loses the tested set (hundreds of repeats, both seeds) while keeping the top-10, and that costs about
+35-40 hits once repeats use a slot (offline bound). The prototype's files keep the tested set exact
+in all three seeds. Top-10 recall stays saturated everywhere.
 
 ### Karen's paired runs (Nov 10-13, ungated, 48K window, DepMap, restricted sandbox)
 
