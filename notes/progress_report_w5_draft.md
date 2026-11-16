@@ -56,7 +56,7 @@ DRAFT, updated Nov 15. Numbers are from `bio/RESULTS.md`; keep them in sync if a
 
    | Arm | Hits | Repeats | Reports correct | Compactions | Input tokens |
    |---|---|---|---|---|---|
-   | Prototype | 229 | 0 | 100/100 | 99 | 12.4M |
+   | Prototype | 229 | 16 (round 2 only) | 100/100 | 99 | 12.4M |
    | Plain Codex | 212 | 0 | 100/100 | 44 | 5.2M |
 
    Random averages 153, kNN 286, UCB 338 and a no-feedback prior 351 (5 seeds each), but those

@@ -150,3 +150,23 @@ def test_gate_refuses_to_close_unopened_round(tmp_path):
     assert "not open" in ev.propose([env.ids[1]], "a")["error"]  # old token
     assert "not open" in ev.end_round()["error"] and env.round == 1  # round 2 stays open for its token
     assert ev.propose([env.ids[1]], "b")["accepted"] and "results" in ev.end_round()
+
+
+@pytest.mark.parametrize("cost", [False, True])
+def test_repeat_cost_uses_a_slot(tmp_path, cost):
+    """--repeat-cost: re-testing a gene wastes its batch slot; default keeps the old re-fill behaviour."""
+    env = BioEnv(toy_screen(), rounds=2, batch=3, anonymize=True, features=False)
+    env.repeat_cost = cost
+    ev = Evaluator(env, tmp_path / "ev")
+    g = env.ids
+    ev.propose(g[0:3]); ev.end_round()
+    r = ev.propose([g[0], g[1], g[3], g[4], g[5]])
+    assert r["rejected"]["already_tested"] == [g[0], g[1]]
+    if cost:
+        assert r["accepted"] == [g[3]] and r["remaining_in_batch"] == 0 and r["wasted_slots_this_round"] == 2
+        assert r["rejected"]["over_batch"] == [g[4], g[5]]
+        assert ev.propose([g[2]])["rejected"]["over_batch"] == [g[2]] and env._cur.wasted == 2  # full: no more waste
+    else:
+        assert r["accepted"] == g[3:6] and r["remaining_in_batch"] == 0 and "wasted_slots_this_round" not in r
+    end = ev.end_round()
+    assert end["short_by"] == (2 if cost else 0)

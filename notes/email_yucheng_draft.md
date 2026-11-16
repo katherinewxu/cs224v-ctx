@@ -38,11 +38,11 @@ MCP server, so scores and gene names stay outside the agent, and every compactio
   and got 28 hits; the baseline compacted 23 times and got 54 hits; neither repeated a gene. But the
   baseline kept track by re-reading our history tool 41 times, which made forgetting free, so we
   removed that tool: each result is now shown once and has to survive compaction.
-- *Without the history tool, the baseline forgot at first.* At 30x16 it repeated 6 genes (all in the
-  last round, first tested 3-28 rounds earlier); the prototype repeated none.
+- *Without the history tool, the baseline forgot at first.* At 30x16 it repeated 6 genes (all in round
+  29 of 30, first tested 3-28 rounds earlier); the prototype repeated none.
 - *DepMap, 100 rounds x 32, 16K, history off, one seed:* we also ask every 10 rounds for the 10 tested
-  genes with the largest |score|. Prototype 229 hits, baseline 212 (random about 160); both 0 repeats
-  and 100/100 report answers correct; 99 vs. 44 compactions, 12.4M vs. 5.2M input tokens. This time
+  genes with the largest |score|. Prototype 229 hits, baseline 212 (random about 160); the prototype repeated 16 genes in round 2 only, the baseline none; both
+  100/100 report answers correct; 99 vs. 44 compactions, 12.4M vs. 5.2M input tokens. This time
   plain Codex wrote each round's results to a file in its workspace and read them back, so both arms
   had an exact memory on disk. Earlier baselines wrote no files and did forget, so this varies by run.
 

@@ -171,6 +171,7 @@ class RoundLog:
     cum_hits: int = 0
     hit_ratio: float = 0.0
     n_tested: int = 0
+    wasted: int = 0  # batch slots spent on repeats (only when BioEnv.repeat_cost is on)
 
 
 class BioEnv:
@@ -207,8 +208,12 @@ class BioEnv:
     def done(self) -> bool:
         return self.round >= self.rounds
 
+    # When True, proposing an already-tested gene uses up a batch slot (a wasted experiment), so
+    # forgetting the tested set costs hits. Off by default: earlier runs re-filled rejected slots for free.
+    repeat_cost = False
+
     def remaining_in_batch(self) -> int:
-        return self.batch - len(self._cur.accepted)
+        return self.batch - len(self._cur.accepted) - self._cur.wasted
 
     def propose(self, genes: list[str]) -> RoundLog:
         """Submit proposals for the current round (may be called again to top up)."""
@@ -219,10 +224,14 @@ class BioEnv:
             if g not in self.index:
                 cur.invalid.append(g)
             elif g in self.tested:
-                cur.repeats.append(g)
+                if self.repeat_cost and self.remaining_in_batch() <= 0:
+                    cur.overflow.append(g)  # batch already full: no slot left to waste
+                else:
+                    cur.repeats.append(g)
+                    cur.wasted += self.repeat_cost
             elif g in cur.accepted:
                 cur.dup_in_batch.append(g)
-            elif len(cur.accepted) >= self.batch:
+            elif self.remaining_in_batch() <= 0:
                 cur.overflow.append(g)
             else:
                 cur.accepted.append(g)

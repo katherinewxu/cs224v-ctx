@@ -478,21 +478,22 @@ Reading:
 
 ### DepMap 100x32, 16K window, history off, report every 10 rounds, fixed gate (2026-11-15, `dm_*_s0`)
 
-| arm | hits | cross-round repeats | top-10 reports correct | compactions | model requests | input tokens | wall |
+| arm | hits | repeats | top-10 reports correct | compactions | model requests | input tokens | wall |
 |---|---|---|---|---|---|---|---|
-| prototype (`codex`) | 229 | 0 | 10/10 at all 10 checkpoints | 99 | 986 | 12.4M | 2h02 |
+| prototype (`codex`) | 229 | 16 (all in round 2) | 10/10 at all 10 checkpoints | 99 | 986 | 12.4M | 2h02 |
 | baseline (`codex-shipped`) | 212 | 0 | 10/10 at all 10 checkpoints | 44 | 437 | 5.2M | 46 min |
 
 - Random picks would average about 160 hits (3,200 of 18,418 genes, 920 hits). Both arms beat
   random by a similar margin. Hits by round 10/30/50: prototype 38/90/129, baseline 28/91/129.
 - Both arms played all 100 rounds, one turn per round, with no gate errors, no empty rounds and
   0 isolation flags.
-- The prototype's `repeats: 16` are all from round 1: it resent IDs it had already proposed that
-  round, and the evaluator rejected them. That is not forgetting; it still got 32 new genes that round.
+- **Correction (Nov 15):** I first misread the 0-based round index and called the prototype's 16
+  repeats same-round resends. They are real: in round 2 it re-proposed 16 of the genes it had tested
+  in round 1 (rejected, then refilled; 32 new genes that round). None after round 2.
 - **No memory gap.** With the history tool removed, plain Codex wrote every round's results to its
   own files (`workspace/screen_records/round_NNN.json`, 100 files) and read them back. The prototype
   kept its own files too (`data_structures/scores.jsonl`, `neighbors.jsonl`). Both had an exact
-  external memory, so neither forgot anything and the report probe was saturated.
+  external memory, so neither forgot anything after round 2 and the report probe was saturated.
   The earlier history-off baselines (`hpilot_base_30x16`, `long_base_s0`) wrote no files and did
   forget (6 and 8 repeats, reports down to 9/10), so whether plain Codex writes files varies by run.
 - **Reference baselines, DepMap 100x32, 5 seeds** (`bio/runs/baselines_depmap_100x32.json`): random
@@ -508,6 +509,25 @@ Reading:
   match it: with the same information, neither agent beats a two-line heuristic yet.
 - Cost: the prototype used 2.4x the input tokens and 2.3x the requests of the baseline for +17 hits
   (one seed). Weekly quota went 34% → 44%.
+
+### Repeats cost a slot: `--repeat-cost` (added Nov 15) and offline re-scoring
+
+Until now a rejected repeat cost nothing: the agent re-filled the slot in its next propose call, so
+forgetting the tested set never cost hits. `evaluator.py --repeat-cost` (`REPEAT_COST=1` in
+`ours/run_bda.sh`) makes a repeat use up its slot, like a wasted experiment. Off by default, so every
+run above keeps its scoring. `bio/rescore_repeat_cost.py` replays a finished run's requests under the
+new rule (an upper bound on the loss: the agent never saw the cost, and dropped genes stay "tested"):
+
+| run | hits | hits if repeats cost a slot | slots wasted |
+|---|---|---|---|
+| dm_ours_s0 (prototype) | 229 | 228 | 16 |
+| dm_base_s0 (plain Codex, files) | 212 | 212 | 0 |
+| nf_base_s0 (plain Codex, no files) | 211 | 180 | 627 |
+| dm_ours_s1 (prototype, seed 1) | 210 | 210 | 0 |
+
+`nf_base_s0`: told not to write files, it complied (0 workspace files), proposed 811 already-tested
+genes over 92 rounds (from round 4 on), and still named the top 10 correctly at every report. It kept
+the short top list through compaction but not the 3,200-gene tested set.
 
 ### Karen's paired runs (Nov 10-13, ungated, 48K window, DepMap, restricted sandbox)
 

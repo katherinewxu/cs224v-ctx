@@ -117,7 +117,8 @@ class Evaluator:
         return {"round": e.round + 1, "accepted": new["accepted"],
                 "rejected": {"invalid": new["invalid"], "already_tested": new["repeats"],
                              "duplicate": new["dup_in_batch"], "over_batch": new["overflow"]},
-                "remaining_in_batch": e.remaining_in_batch(), "proposals_left": self.max_props - self.props_used}
+                "remaining_in_batch": e.remaining_in_batch(), "proposals_left": self.max_props - self.props_used,
+                **({"wasted_slots_this_round": cur.wasted} if e.repeat_cost else {})}
 
     def end_round(self) -> dict:
         e = self.env
@@ -260,10 +261,13 @@ def main() -> None:
                          "(the agent must keep its own record, so memory survives compaction or it doesn't)")
     ap.add_argument("--report-every", type=int, default=0, help="score-memory probe every K rounds (0 = off)")
     ap.add_argument("--report-n", type=int, default=10)
+    ap.add_argument("--repeat-cost", action="store_true",
+                    help="an already-tested gene uses up a batch slot (wasted experiment) instead of being re-fillable")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     seed = int.from_bytes(os.urandom(4), "big") if a.secret_seed else a.seed
     env = BioEnv(a.screen, rounds=a.rounds, batch=a.batch, anonymize=a.anonymize, seed=seed, features=a.features)
+    env.repeat_cost = a.repeat_cost
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
     ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history, a.report_every, a.report_n)
     out = Path(a.out)
