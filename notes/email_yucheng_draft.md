@@ -33,7 +33,9 @@ agent never sees the grade. Doing well means keeping scores, signs and lookup re
 grouping hits by shared neighbours. A no-LLM reference that does this with perfect bookkeeping scores
 0.16 at 100x32, against 0.03 for random modules (max 1.0). In a 30x16 pilot (one seed) the prototype
 scored 0.05 and plain Codex 0.008; plain Codex wrote no files this time and put non-hits in most of its
-modules. We'd next run 100x32 with 3 seeds per arm.
+modules. The prototype also under-submitted (1-3 modules per checkpoint
+instead of 5), so the task text now says the score averages over 5. The 100x32 runs, 3 seeds per arm,
+started Nov 20 and should finish by Nov 21; we'll send those results and logs when they're in.
 
 **Questions.**
 1. Does this kind of task test what the prototype's structured memory is meant to do? Is there a
