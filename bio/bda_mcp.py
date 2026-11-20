@@ -35,8 +35,15 @@ TOOLS = [
     ("history", "Every result you have observed so far: round, id, score, hit.", NONE, "GET", "/history"),
     ("report", "When end_round says a report is due: the tested genes with the largest |score| so far, "
                "from your own records. Scored by the evaluator; the score is not shown.", IDS, "POST", "/report"),
+    ("hypothesis", "When end_round says a hypothesis is due: up to 5 modules, each 3-10 genes you have tested that "
+                   "you believe act together, with the sign (+ or -) you predict for their untested neighbours "
+                   "(the genes most often in the members' lookup lists). Graded on those untested genes; the "
+                   "grade is not shown.",
+     {"type": "object", "properties": {"modules": {"type": "array", "items": {"type": "object", "properties": {
+         "genes": {"type": "array", "items": {"type": "string"}}, "sign": {"type": "string", "enum": ["+", "-"]}},
+         "required": ["genes", "sign"]}}}, "required": ["modules"]}, "POST", "/hypothesis"),
 ]
-HISTORY_DESC = {"full": TOOLS[-1][1], "last": "Results of the last closed round only: round, id, score, hit."}
+HISTORY_DESC = {"full": TOOLS[4][1], "last": "Results of the last closed round only: round, id, score, hit."}
 ROUTES = {name: (method, path) for name, _, _, method, path in TOOLS}
 TOOLS[1] = (TOOLS[1][0], TOOLS[1][1], {"type": "object", "properties": {
     "ids": {"type": "array", "items": {"type": "string"}}, "round_token": {"type": "string"}}, "required": ["ids"]},
@@ -62,7 +69,7 @@ class Relay:
             return e.code, json.loads(e.read())
 
 
-def tool_list(history: str = "full", report: bool = False) -> list[dict]:
+def tool_list(history: str = "full", report: bool = False, hypothesis: bool = False) -> list[dict]:
     """history=none drops the tool (results are shown once, in end_round's reply); last relabels it."""
     out = []
     for n, d, s, _, _ in TOOLS:
@@ -70,13 +77,13 @@ def tool_list(history: str = "full", report: bool = False) -> list[dict]:
             if history == "none":
                 continue
             d = HISTORY_DESC[history]
-        if n == "report" and not report:
+        if (n == "report" and not report) or (n == "hypothesis" and not hypothesis):
             continue
         out.append({"name": n, "description": d, "inputSchema": s})
     return out
 
 
-def handle(ev, msg: dict, history: str = "full", report: bool = False):
+def handle(ev, msg: dict, history: str = "full", report: bool = False, hypothesis: bool = False):
     mid, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
     if mid is None:  # notification (e.g. notifications/initialized)
         return None
@@ -86,10 +93,11 @@ def handle(ev, msg: dict, history: str = "full", report: bool = False):
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        result = {"tools": tool_list(history, report)}
+        result = {"tools": tool_list(history, report, hypothesis)}
     elif method == "tools/call":
         name = params.get("name")
-        if name not in ROUTES or (name == "history" and history == "none") or (name == "report" and not report):
+        if name not in ROUTES or (name == "history" and history == "none") or (name == "report" and not report) or \
+                (name == "hypothesis" and not hypothesis):
             return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32602, "message": f"unknown tool {name}"}}
         verb, path = ROUTES[name]
         args = params.get("arguments") or {}
@@ -100,7 +108,7 @@ def handle(ev, msg: dict, history: str = "full", report: bool = False):
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
-def serve(ev, after=lambda: None, history: str = "full", report: bool = False) -> None:
+def serve(ev, after=lambda: None, history: str = "full", report: bool = False, hypothesis: bool = False) -> None:
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -110,7 +118,7 @@ def serve(ev, after=lambda: None, history: str = "full", report: bool = False) -
         except json.JSONDecodeError:
             out = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
         else:
-            out = handle(ev, msg, history, report)
+            out = handle(ev, msg, history, report, hypothesis)
         if out is not None:
             sys.stdout.write(json.dumps(out) + "\n")
             sys.stdout.flush()
@@ -137,10 +145,11 @@ def main() -> None:
     ap.add_argument("--history", choices=HISTORY_MODES, default="full",
                     help="must match the evaluator's --history in relay mode (none hides the tool)")
     ap.add_argument("--report-every", type=int, default=0, help="score-memory probe every K rounds (0 = off)")
+    ap.add_argument("--hypothesis-every", type=int, default=0, help="graded hypotheses every K rounds (0 = off)")
     ap.add_argument("--out", help="required without --url")
     a = ap.parse_args()
     if a.url:
-        serve(Relay(a.url), history=a.history, report=a.report_every > 0)
+        serve(Relay(a.url), history=a.history, report=a.report_every > 0, hypothesis=a.hypothesis_every > 0)
         return
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
     seed = int.from_bytes(os.urandom(4), "big") if a.secret_seed else a.seed

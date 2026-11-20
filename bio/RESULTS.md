@@ -561,3 +561,19 @@ in all three seeds. Top-10 recall stays saturated everywhere.
 Each finished in ~2-3 minutes with 10-21 model requests and no compaction: the agents scripted the
 rounds in code. These compare one-shot programs, not context handling. Her guarded stack
 (`bio/run_paired_pilot.py`) now has `--gate` for the next pairs.
+
+## Graded hypotheses pilot (Nov 19)
+
+Harder task (files allowed for both arms): 15% of genes are held out and never testable; every 10
+rounds and at the end the agent submits up to 5 modules (3-10 tested genes + sign), each graded on the
+8 held-out genes most frequent in its members' lookup lists (fraction that are hits of that sign;
+score = sum / 5). Grades are not shown to the agent. Design and offline baselines:
+`notes/harder_task_design.md`, `bio/hypothesis_baselines.py`.
+
+| run | arm | hits | hypothesis score | repeats | held-out proposals | workspace files |
+|---|---|---|---|---|---|---|
+| hyp_ours_30x16 | prototype | 48 | 0.050 | 0 | 94 | 8 |
+| hyp_base_30x16 | plain Codex, files allowed | 35 | 0.008 | 17 | 88 | 0 |
+
+Offline at 30x16: random modules 0.015, same-sign hits 0.040, nbr_hits 0.030; at 100x32: 0.032,
+0.083, 0.162. One seed, 30x16: a mechanics check, not a result.

@@ -170,3 +170,84 @@ def test_repeat_cost_uses_a_slot(tmp_path, cost):
         assert r["accepted"] == g[3:6] and r["remaining_in_batch"] == 0 and "wasted_slots_this_round" not in r
     end = ev.end_round()
     assert end["short_by"] == (2 if cost else 0)
+
+
+def test_batch_constraint_moving_top_set(tmp_path):
+    """--constraint-top/-min: from round 2 on, >= 2 accepted genes must be untested neighbours of the top-1 gene."""
+    env = BioEnv(toy_screen(), rounds=4, batch=3, anonymize=False, features=False)
+    env.constraint_top, env.constraint_min, env.constraint_from = 1, 2, 2
+    nbrs = {"S0": ["S2", "S3", "S4"], "S39": ["S37", "S36"], "S20": ["S21"]}  # toy neighbour lists
+    env.lookup = lambda g, k=8: [(h, 0.1) for h in nbrs.get(g, [])][:k]
+    ev = Evaluator(env, tmp_path / "ev")
+    ev.propose(["S20", "S0", "S10"]); r1 = ev.end_round()
+    assert "constraint" not in r1  # round 1 is before constraint_from
+    assert "constraint" in ev.status()
+    ev.propose(["S2", "S3", "S39"]); r2 = ev.end_round()  # top-1 is S0 (|-1|): S2, S3 count
+    assert r2["constraint"] == {"required": 2, "met": 2, "ok": True}
+    # S39 (|score| 1) now ties S0; tie broken by ID, so S0 stays top-1 with only S4 untested: required drops to 1
+    ev.propose(["S37", "S36", "S11"]); r3 = ev.end_round()
+    assert r3["constraint"] == {"required": 1, "met": 0, "ok": False}
+    hits_r3 = len(env.log[2].hits)
+    assert r3["cum_valid_hits"] == r3["cum_hits"] - hits_r3
+    t = env.totals()
+    assert t["violations"] == 1 and t["constrained_rounds"] == 2 and t["valid_hits"] == r3["cum_valid_hits"]
+    run = json.loads((ev.out / "run.json").read_text())
+    assert run["rounds"][2]["cons_ok"] is False and run["totals"]["violations"] == 1
+
+
+def test_constraint_off_by_default(tmp_path):
+    env = BioEnv(toy_screen(), rounds=2, batch=2, anonymize=False, features=False)
+    ev = Evaluator(env, tmp_path / "ev")
+    ev.propose(["S0", "S1"]); r = ev.end_round()
+    assert "constraint" not in r and "valid_hits" not in env.totals() and "constraint" not in ev.status()
+
+
+def test_hypothesis_graded_on_untested_neighbours(tmp_path):
+    """--hypothesis-every: modules of tested genes + sign, graded privately on their untested neighbours."""
+    from evaluator import grade_module
+    env = BioEnv(toy_screen(), rounds=2, batch=4, anonymize=False, features=False)
+    # toy scores: linspace(-1, 1, 40); hits S0, S1 (negative) and S38, S39 (positive)
+    nbrs = {"S2": ["S0", "S1", "S20"], "S3": ["S0", "S1", "S21"], "S4": ["S0", "S22"], "S5": ["S39"]}
+    env.lookup = lambda g, k=8: [(h, 0.1) for h in nbrs.get(g, [])][:k]
+    ev = Evaluator(env, tmp_path / "ev", hypothesis_every=1, hypothesis_heldout=4)
+    ev.propose(["S2", "S3", "S4", "S5"]); r = ev.end_round()
+    assert "hypothesis_due" in r and "hypothesis due" in ev.propose(["S6"])["error"]
+    good = {"genes": ["S2", "S3", "S4"], "sign": "-"}
+    wrong_sign = {"genes": ["S2", "S3", "S4"], "sign": "+"}
+    too_small = {"genes": ["S5", "S99"], "sign": "+"}  # S99 invalid, so 1 tested member < 3
+    resp = ev.hypothesis([good, wrong_sign, too_small])
+    assert resp["recorded"] and "score" not in json.dumps(resp)  # grade not revealed
+    m = ev.hypotheses[-1]["modules"]
+    # held-out: S0 (3 members), S1 (2), then S20, S21, S22 (1 each) -> top 4 = S0, S1, S20, S21; hits with "-": S0, S1
+    assert m[0]["heldout"] == ["S0", "S1", "S20", "S21"] and m[0]["score"] == 0.5
+    assert m[1]["score"] == 0.0 and m[2]["score"] == 0.0 and m[2]["n_members"] == 1
+    assert ev.hypotheses[-1]["score"] == 0.5 / 5  # 5 module slots, missing ones count 0
+    assert "no hypothesis" in ev.hypothesis([good])["error"]
+    assert grade_module(env, ["S2", "S3", "S4"], "x")["score"] == 0.0  # bad sign
+    run = json.loads((ev.out / "run.json").read_text())
+    assert run["hypothesis_score"] == 0.1
+
+
+def test_mcp_lists_hypothesis_only_when_on():
+    from bda_mcp import tool_list
+    assert "hypothesis" not in [t["name"] for t in tool_list("none", True)]
+    assert "hypothesis" in [t["name"] for t in tool_list("none", True, True)]
+
+
+def test_reserve_held_out_and_used_for_grading(tmp_path):
+    from evaluator import grade_module
+    env = BioEnv(toy_screen(), rounds=2, batch=3, anonymize=False, features=False)
+    env.reserved = frozenset({"S0", "S1"})
+    nbrs = {"S2": ["S0", "S1", "S20"], "S3": ["S0", "S21"], "S4": ["S0", "S1"]}
+    env.lookup = lambda g, k=8: [(h, 0.1) for h in nbrs.get(g, [])][:k]
+    ev = Evaluator(env, tmp_path / "ev")
+    r = ev.propose(["S0", "S2", "S3", "S4"])
+    assert r["rejected"]["held_out"] == ["S0"] and r["accepted"] == ["S2", "S3", "S4"]
+    ev.end_round()
+    m = grade_module(env, ["S2", "S3", "S4"], "-", n_heldout=2)
+    assert m["heldout"] == ["S0", "S1"] and m["score"] == 1.0  # only reserved genes are graded, S20/S21 ignored
+    env2 = BioEnv(toy_screen(), rounds=1, batch=1, anonymize=False, features=False)
+    env2.set_reserve(0.25, 7)
+    env3 = BioEnv(toy_screen(), rounds=1, batch=1, anonymize=False, features=False)
+    env3.set_reserve(0.25, 7)
+    assert len(env2.reserved) == 10 and env2.reserved == env3.reserved  # same seed, same held-out set

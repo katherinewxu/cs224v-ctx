@@ -28,6 +28,8 @@ def row(name: str) -> dict:
             "rounds": t["rounds"], "tested": t["tested"], "hits": t["cum_hits"],
             "hit_ratio": round(t["hit_ratio"], 4), "recount_agrees": abs(ev["hit_ratio_recount"] - t["hit_ratio"]) < 1e-12,
             "report_score": None if ev.get("report_score") is None else round(ev["report_score"], 3),
+            "hypothesis_score": None if ev.get("hypothesis_score") is None else round(ev["hypothesis_score"], 3),
+            "held_out_rejected": sum(len(r.get("reserved", [])) for r in ev.get("rounds", [])),
             "repeats": t["repeats"], "dup_in_batch": t["dup_in_batch"], "invalid": t["invalid"],
             "short_batches": t["short_batches"], "requests": au.get("requests"),
             "max_input_tokens": au.get("max_input_tokens"), "compactions": len(au.get("compactions", [])),
@@ -39,7 +41,7 @@ def row(name: str) -> dict:
 
 def main(names: list[str]) -> None:
     rows = [row(n) for n in names]
-    cols = ["name", "harness", "status", "gated", "history", "rounds", "hits", "report_score", "repeats", "dup_in_batch", "short_batches",
+    cols = ["name", "harness", "status", "gated", "history", "rounds", "hits", "report_score", "hypothesis_score", "held_out_rejected", "repeats", "dup_in_batch", "short_batches",
             "requests", "max_input_tokens", "compactions", "isolation_flags", "workspace_files", "input_tokens_total", "wall_min"]
     print("| " + " | ".join(cols) + " |\n|" + "---|" * len(cols))
     for r in rows:
