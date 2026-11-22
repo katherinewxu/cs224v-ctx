@@ -620,3 +620,28 @@ Reading:
 - **Isolation:** 28 flags in plain Codex s0/s2, checked by hand. 26 are JS variables named `ps`;
   in the other two, s0 ran `ls -la ../trace`, which listed an
   empty folder. No evaluator, data or seed access.
+
+## Hypothesis grading v2: fresh modules, found-genes denominator (Nov 21)
+
+Two problems in the 100x32 runs: modules froze after about round 30, and most modules found only 2-5 of
+the 8 graded held-out genes (missing ones counted as misses). New evaluator options, both off by default
+so earlier runs reproduce:
+- `--hypothesis-fresh` (`HYP_FRESH=1`): a module scores only if it contains a gene tested since the last
+  hypothesis. The task text and the `hypothesis_due` message say so.
+- `--hypothesis-denom found` (`HYP_DENOM=found`): score = same-sign hits / held-out genes found (at most 8),
+  and 0 if fewer than 3 are found.
+
+Offline references (`bio/hypothesis_baselines.py`, 5 seeds; module strategies now use their own RNG, so
+gene picks match across rules and the old-rule numbers moved slightly; `frozen` resubmits the first
+checkpoint's `nbr_hits` modules, which is what most agents did; under fresh, `nbr_hits` keeps its best
+modules and adds the most-linked fresh same-sign hit to each):
+
+| 100x32 | old rule | fresh only | found only | fresh + found |
+|---|---|---|---|---|
+| random | 0.021 | 0.021 | 0.029 | 0.027 |
+| hits | 0.087 | 0.087 | 0.118 | 0.103 |
+| nbr_hits | 0.155 | 0.158 | 0.228 | 0.218 (0.055-0.383) |
+| frozen | 0.090 | 0.008 | 0.129 | 0.012 |
+
+At 30x16 (fresh + found): random 0.020, hits 0.034, nbr_hits 0.039, frozen 0.000. Too few hits by round
+30 to separate strategies, so the 30x16 pilot checks mechanics only.

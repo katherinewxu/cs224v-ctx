@@ -251,3 +251,31 @@ def test_reserve_held_out_and_used_for_grading(tmp_path):
     env3 = BioEnv(toy_screen(), rounds=1, batch=1, anonymize=False, features=False)
     env3.set_reserve(0.25, 7)
     assert len(env2.reserved) == 10 and env2.reserved == env3.reserved  # same seed, same held-out set
+
+
+def test_hypothesis_fresh_and_found_denominator(tmp_path):
+    """--hypothesis-fresh scores only modules with a gene tested since the last checkpoint;
+    --hypothesis-denom found divides by the held-out genes actually found (at least min_heldout)."""
+    from evaluator import grade_module
+    env = BioEnv(toy_screen(), rounds=3, batch=4, anonymize=False, features=False)
+    nbrs = {"S2": ["S0", "S1", "S20"], "S3": ["S0", "S1", "S21"], "S4": ["S0", "S22"], "S5": ["S39"],
+            "S6": ["S0", "S1"], "S7": ["S39"], "S8": ["S39"], "S9": ["S39"]}
+    env.lookup = lambda g, k=8: [(h, 0.1) for h in nbrs.get(g, [])][:k]
+    ev = Evaluator(env, tmp_path / "ev", hypothesis_every=1, hypothesis_heldout=8,
+                   hypothesis_fresh=True, hypothesis_denom="found")
+    ev.propose(["S2", "S3", "S4", "S5"]); r = ev.end_round()
+    assert "since the last hypothesis" in r["hypothesis_due"]
+    good = {"genes": ["S2", "S3", "S4"], "sign": "-"}
+    ev.hypothesis([good])
+    m = ev.hypotheses[-1]["modules"][0]
+    # first checkpoint: everything tested is fresh; 5 held-out found, 2 are "-" hits -> 2/5 (fixed would be 2/8)
+    assert m["fresh_members"] == 3 and m["heldout"] == ["S0", "S1", "S20", "S21", "S22"] and m["score"] == 0.4
+    ev.propose(["S6", "S7", "S8", "S9"]); ev.end_round()
+    ev.hypothesis([good, {"genes": ["S2", "S3", "S6"], "sign": "-"}, {"genes": ["S7", "S8", "S9"], "sign": "+"}])
+    m = ev.hypotheses[-1]["modules"]
+    assert m[0]["fresh_members"] == 0 and m[0]["score"] == 0.0  # resubmitted, nothing new: scores 0
+    assert m[1]["fresh_members"] == 1 and m[1]["score"] == 0.5  # one new gene (S6) counts; S0, S1, S20, S21 found
+    assert m[2]["heldout"] == ["S39"] and m[2]["score"] == 0.0  # 1 held-out found < min_heldout 3
+    # defaults unchanged: fixed denominator, no freshness
+    assert grade_module(env, ["S2", "S3", "S4"], "-")["score"] == 2 / 8
+    assert "fresh_members" not in grade_module(env, ["S2", "S3", "S4"], "-")

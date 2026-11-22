@@ -47,13 +47,19 @@ from env import BioEnv  # noqa: E402
 HISTORY_MODES = ("full", "last", "none")
 
 
-def grade_module(env: BioEnv, genes: list[str], sign: str, n_heldout: int = 8, min_members: int = 3) -> dict:
+def grade_module(env: BioEnv, genes: list[str], sign: str, n_heldout: int = 8, min_members: int = 3,
+                 denom: str = "fixed", min_heldout: int = 3, fresh: set | None = None) -> dict:
     """Graded hypothesis: the n_heldout held-out genes (env.reserved, never testable) most often in the members'
     lookup-neighbour lists (ties by ID) are the test; the score is the fraction of them that are hits with the
     predicted sign. Fewer than n_heldout candidates count as misses, so tiny neighbourhoods can't score high.
-    Without a reserve it falls back to untested genes, which the agent's own testing depletes."""
+    Without a reserve it falls back to untested genes, which the agent's own testing depletes.
+    denom="found": divide by the held-out genes actually found (at most n_heldout) instead of n_heldout; a
+    module with fewer than min_heldout of them scores 0. fresh: if given, a module with no member in it
+    (genes tested since the last checkpoint) scores 0, so resubmitting old modules earns nothing."""
     members = [g for g in dict.fromkeys(str(x) for x in genes) if g in env.tested]
     rec = {"members": members, "sign": sign, "n_members": len(members), "score": 0.0, "heldout": []}
+    if fresh is not None:
+        rec["fresh_members"] = sum(g in fresh for g in members)
     if len(members) < min_members or sign not in ("+", "-"):
         return rec
     count: dict[str, int] = {}
@@ -65,7 +71,13 @@ def grade_module(env: BioEnv, genes: list[str], sign: str, n_heldout: int = 8, m
     want = 1 if sign == "+" else -1
     good = [h for h in held if env._is_hit[env.index[h]] and (env._score[env.index[h]] > 0) == (want > 0)]
     mem_good = sum(bool(env._is_hit[env.index[g]]) and (env._score[env.index[g]] > 0) == (want > 0) for g in members)
-    rec.update(heldout=held, score=len(good) / n_heldout, member_precision=mem_good / len(members))
+    if denom == "found":
+        score = len(good) / len(held) if len(held) >= min_heldout else 0.0
+    else:
+        score = len(good) / n_heldout
+    if fresh is not None and not rec["fresh_members"]:
+        score = 0.0
+    rec.update(heldout=held, score=score, member_precision=mem_good / len(members))
     return rec
 HELP = __doc__.split("Scores are revealed")[0].strip()
 
@@ -92,7 +104,8 @@ class Evaluator:
     def __init__(self, env: BioEnv, out: Path, proposals_per_round: int = 3, lookups_per_round: int = 4,
                  gate: RoundGate | None = None, history_mode: str = "full", report_every: int = 0,
                  report_n: int = 10, hypothesis_every: int = 0, hypothesis_modules: int = 5,
-                 hypothesis_max_genes: int = 10, hypothesis_heldout: int = 8):
+                 hypothesis_max_genes: int = 10, hypothesis_heldout: int = 8,
+                 hypothesis_fresh: bool = False, hypothesis_denom: str = "fixed"):
         if history_mode not in HISTORY_MODES:
             raise ValueError(f"history_mode must be one of {HISTORY_MODES}")
         self.gate, self.history_mode = gate, history_mode
@@ -106,6 +119,7 @@ class Evaluator:
         # of tested genes plus a predicted sign; each is graded on untested neighbours (grade_module).
         self.hypothesis_every, self.hypothesis_modules = hypothesis_every, hypothesis_modules
         self.hypothesis_max_genes, self.hypothesis_heldout = hypothesis_max_genes, hypothesis_heldout
+        self.hypothesis_fresh, self.hypothesis_denom = hypothesis_fresh, hypothesis_denom
         self.hypothesis_due: int | None = None
         self.hypotheses: list[dict] = []
         self.on_done = None
@@ -192,7 +206,9 @@ class Evaluator:
             self.hypothesis_due = log.round + 1
             out["hypothesis_due"] = (f"Also call hypothesis with up to {self.hypothesis_modules} modules: groups of 3-"
                                      f"{self.hypothesis_max_genes} genes you have tested that you believe act together, "
-                                     f"each with the sign (+ or -) you predict for their untested neighbours.")
+                                     f"each with the sign (+ or -) you predict for their untested neighbours."
+                                     + (" Only modules containing at least one gene you tested since the last "
+                                        "hypothesis are scored." if self.hypothesis_fresh else ""))
         if self.gate and not e.done:
             out["next"] = "Round closed. Stop here and end your turn; the next user message gives the next round's token."
         return out
@@ -229,10 +245,12 @@ class Evaluator:
         if not isinstance(modules, list) or not all(isinstance(m, dict) for m in modules):
             return {"error": 'modules must be a list of {"genes": [...], "sign": "+" or "-"}'}
         e, graded = self.env, []
+        prev = self.hypotheses[-1]["after_round"] if self.hypotheses else 0
+        fresh = ({g for l in e.log[prev:] for g in l.accepted} if self.hypothesis_fresh else None)
         for m in modules[:self.hypothesis_modules]:
             genes = m.get("genes") if isinstance(m.get("genes"), list) else []
             graded.append(grade_module(e, genes[:self.hypothesis_max_genes], str(m.get("sign", "")).strip(),
-                                       self.hypothesis_heldout))
+                                       self.hypothesis_heldout, denom=self.hypothesis_denom, fresh=fresh))
         score = sum(g["score"] for g in graded) / self.hypothesis_modules  # missing modules count as 0
         rec = {"after_round": self.hypothesis_due, "score": score, "modules": graded,
                "untested_named": sum(len([x for x in (m.get("genes") or []) if str(x) not in e.tested])
@@ -341,6 +359,10 @@ def main() -> None:
     ap.add_argument("--repeat-cost", action="store_true",
                     help="an already-tested gene uses up a batch slot (wasted experiment) instead of being re-fillable")
     ap.add_argument("--hypothesis-every", type=int, default=0, help="graded hypotheses every K rounds (0 = off)")
+    ap.add_argument("--hypothesis-fresh", action="store_true",
+                    help="score only modules with a gene tested since the last hypothesis (no resubmitting old modules)")
+    ap.add_argument("--hypothesis-denom", choices=["fixed", "found"], default="fixed",
+                    help="fixed: score = good / 8; found: good / held-out genes actually found (at least 3)")
     ap.add_argument("--reserve", type=float, default=0.0,
                     help="fraction of genes held out from testing as the hypothesis grading set (drawn from the seed)")
     ap.add_argument("--constraint-top", type=int, default=0, help="batch constraint: size of the moving top set (0 = off)")
@@ -356,7 +378,8 @@ def main() -> None:
     env.constraint_top, env.constraint_min, env.constraint_from = a.constraint_top, a.constraint_min, a.constraint_from
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
     ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history, a.report_every, a.report_n,
-                   hypothesis_every=a.hypothesis_every)
+                   hypothesis_every=a.hypothesis_every, hypothesis_fresh=a.hypothesis_fresh,
+                   hypothesis_denom=a.hypothesis_denom)
     out = Path(a.out)
     (out / "config.json").write_text(json.dumps(vars(a)))
     if a.secret_seed:
