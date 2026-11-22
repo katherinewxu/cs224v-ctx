@@ -42,8 +42,12 @@ modules. We then ran 100x32, 3 seeds per arm
   120+ files in every seed but still re-proposed 161 and 195 tested genes in two of them. The
   one seed where it kept an exact record had the best hypothesis score of all six runs.
 - **The task still doesn't need long-horizon memory.** Most runs resubmit the same modules from
-  about round 30 on, so the score is mostly set early. We're looking at grading only modules
-  that include recently tested genes.
+  about round 30 on, so the score is mostly set early. We now score only modules that include a gene
+  tested since the last checkpoint, grade each module on the held-out genes its neighbour lists
+  actually contain, and count each held-out gene once per checkpoint (a 30x16 pilot showed that
+  submitting copies of one module otherwise games the score). With all three rules, a reference with
+  perfect bookkeeping scores 0.11 at 100x32 against 0.02 for random modules; we plan to rerun 100x32
+  under them next.
 - The prototype used about twice the tokens and wall time (21-24M vs 11-12M input tokens per run).
 
 (The prototype's seed 0 hit our usage limit at round 99, so it has 9 of 10 checkpoints.)

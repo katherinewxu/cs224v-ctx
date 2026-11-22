@@ -279,3 +279,21 @@ def test_hypothesis_fresh_and_found_denominator(tmp_path):
     # defaults unchanged: fixed denominator, no freshness
     assert grade_module(env, ["S2", "S3", "S4"], "-")["score"] == 2 / 8
     assert "fresh_members" not in grade_module(env, ["S2", "S3", "S4"], "-")
+
+
+def test_hypothesis_dedup_counts_each_heldout_once(tmp_path):
+    """--hypothesis-dedup: copies of one module are graded on the same held-out genes, so they add nothing;
+    score = distinct same-sign held-out hits over scoring modules / (modules x heldout)."""
+    env = BioEnv(toy_screen(), rounds=3, batch=4, anonymize=False, features=False)
+    nbrs = {"S2": ["S0", "S1", "S20"], "S3": ["S0", "S1", "S21"], "S4": ["S0", "S22"], "S5": ["S39"]}
+    env.lookup = lambda g, k=8: [(h, 0.1) for h in nbrs.get(g, [])][:k]
+    ev = Evaluator(env, tmp_path / "ev", hypothesis_every=1, hypothesis_heldout=8,
+                   hypothesis_fresh=True, hypothesis_denom="found", hypothesis_dedup=True)
+    ev.propose(["S2", "S3", "S4", "S5"]); r = ev.end_round()
+    assert "counts once" in r["hypothesis_due"]
+    good = {"genes": ["S2", "S3", "S4"], "sign": "-"}
+    ev.hypothesis([good] * 5)
+    h = ev.hypotheses[-1]
+    # each copy alone scores 2/5, but the 2 good held-out genes count once: 2 / (5 x 8)
+    assert [m["score"] for m in h["modules"]] == [0.4] * 5
+    assert [m["new_good"] for m in h["modules"]] == [2, 0, 0, 0, 0] and h["score"] == 2 / 40

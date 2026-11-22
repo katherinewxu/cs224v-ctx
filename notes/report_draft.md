@@ -180,6 +180,9 @@ measure false "tested" claims.
 - Graded hypotheses: modules are scored on at most 8 held-out neighbours, but members' lookup lists
   hold only 2-5 on average and missing ones count as misses, which caps most module scores well
   below 1; agents also freeze their modules early, so later checkpoints add little signal.
+  Fixed in grading v2/v3 (fresh modules, found-genes denominator, each held-out gene counted once);
+  v2 alone could be gamed by submitting copies of one module (plain Codex scored 0.50 that way in the
+  30x16 pilot; 0.12 with dedup). Earlier runs were re-scored but were not told the new rules.
 - Qwen3-8B runs and one-seed Opus pilots have different capability and sampling controls;
   compare context policies within a fixed model, scaffold and feature source.
 - Anonymized-screen features leak from sibling screens; DepMap code exists but real-data

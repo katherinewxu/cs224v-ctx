@@ -21,10 +21,11 @@
 #     can see in lookups but never test. Needs judgment over many past results, not only a record of them.
 #   HYP_FRESH=1: only modules containing a gene tested since the last hypothesis are scored (no resubmitting).
 #   HYP_DENOM=found: a module scores good / held-out genes actually found (at least 3), not good / 8.
+#   HYP_DEDUP=1: each held-out hit counts once per checkpoint (copies of one module add nothing); score /40.
 # Evaluator state, requests and scoring go to ours/evals/NAME (outside the agent workspace).
 set -eu
 NAME=$1; HARNESS=$2; CW=$3; R=$4; B=$5; WALL=${6:-3600}; GATE=${GATE:-1}; HISTORY=${HISTORY:-full}; REPORT_EVERY=${REPORT_EVERY:-0}; NOFILES=${NOFILES:-0}; REPEAT_COST=${REPEAT_COST:-0}
-HYP_FRESH=${HYP_FRESH:-0}; HYP_DENOM=${HYP_DENOM:-fixed}
+HYP_FRESH=${HYP_FRESH:-0}; HYP_DENOM=${HYP_DENOM:-fixed}; HYP_DEDUP=${HYP_DEDUP:-0}
 HYPOTHESIS_EVERY=${HYPOTHESIS_EVERY:-0}; RESERVE=${RESERVE:-$([ "$HYPOTHESIS_EVERY" -gt 0 ] && echo 0.15 || echo 0)}
 HERE=$(cd "$(dirname "$0")" && pwd); ROOT=$(dirname "$HERE")
 EVAL="$HERE/evals/$NAME"; [ -e "$EVAL" ] && { echo "exists: $EVAL"; exit 1; }
@@ -37,7 +38,7 @@ if [ "$GATE" = 1 ]; then
 fi
 # The evaluator runs for the whole episode (Codex restarts MCP servers on every turn); bda_mcp.py relays to it.
 "$ROOT/bio/.venv/bin/python" -I "$ROOT/bio/evaluator.py" --rounds "$R" --batch "$B" --anonymize \
-  --features "${FEATURES:-screens}" --secret-seed --history "$HISTORY" --report-every "$REPORT_EVERY" $([ "$REPEAT_COST" = 1 ] && echo --repeat-cost) --hypothesis-every "$HYPOTHESIS_EVERY" $([ "$HYP_FRESH" = 1 ] && echo --hypothesis-fresh) --hypothesis-denom "$HYP_DENOM" --reserve "$RESERVE" --round-token-hashes "$HASHES" --port 0 --out "$EVAL" \
+  --features "${FEATURES:-screens}" --secret-seed --history "$HISTORY" --report-every "$REPORT_EVERY" $([ "$REPEAT_COST" = 1 ] && echo --repeat-cost) --hypothesis-every "$HYPOTHESIS_EVERY" $([ "$HYP_FRESH" = 1 ] && echo --hypothesis-fresh) --hypothesis-denom "$HYP_DENOM" $([ "$HYP_DEDUP" = 1 ] && echo --hypothesis-dedup) --reserve "$RESERVE" --round-token-hashes "$HASHES" --port 0 --out "$EVAL" \
   > "$HERE/evals/$NAME.server.log" 2>&1 &
 EVPID=$!; trap 'kill $EVPID 2>/dev/null' EXIT
 for _ in $(seq 120); do [ -s "$EVAL/port" ] && break; sleep 1; done
@@ -55,6 +56,7 @@ esac
 [ "$REPORT_EVERY" -gt 0 ] && TASK="$TASK Every $REPORT_EVERY rounds and after the last round, end_round will say a report is due: call report with the 10 genes you have tested whose |score| is largest so far, before proposing again. Report accuracy is scored along with hits."
 [ "$HYPOTHESIS_EVERY" -gt 0 ] && TASK="$TASK Some genes ($(python3 -I -c "print(round($RESERVE*100))")%) are held out: you can see them in lookup results but propose rejects them (held_out), so propose others. Every $HYPOTHESIS_EVERY rounds and after the last round, end_round will say a hypothesis is due: before proposing again, call hypothesis with 5 modules (the score averages over 5, so submitting fewer scores lower), each 3-10 genes you have tested that you believe act together, with the sign (+ or -) you predict for their held-out neighbours. Each module is graded on the 8 held-out genes that appear most often in its members' lookup lists: the more of them are hits with the sign you gave, the better. Hypothesis quality is scored along with hits; the grade is not shown."
 [ "$HYPOTHESIS_EVERY" -gt 0 ] && [ "$HYP_FRESH" = 1 ] && TASK="$TASK Only modules that contain at least one gene you tested since the previous hypothesis are scored, so update your modules with new results each time rather than resubmitting old ones."
+[ "$HYPOTHESIS_EVERY" -gt 0 ] && [ "$HYP_DEDUP" = 1 ] && TASK="$TASK Each held-out gene counts once per hypothesis, so submit distinct modules: copies or heavy overlaps add nothing."
 [ "$REPEAT_COST" = 1 ] && TASK="$TASK Proposing a gene you already tested wastes that slot: it is not re-tested and cannot be refilled this round."
 [ "$NOFILES" = 1 ] && [ "$HARNESS" = codex-shipped ] && TASK="$TASK Do not create, write or modify any files (no scripts, notes or logs on disk): keep everything you need in this conversation."
 FOLLOW=()
@@ -68,7 +70,7 @@ else
   PROMPT="$TASK Keep going until status reports done, then reply with the total number of hits."
 fi
 
-echo "$(date) ours run $NAME harness=$HARNESS cw=$CW ${R}x${B} gate=$GATE history=$HISTORY report_every=$REPORT_EVERY nofiles=$NOFILES repeat_cost=$REPEAT_COST hypothesis_every=$HYPOTHESIS_EVERY reserve=$RESERVE hyp_fresh=$HYP_FRESH hyp_denom=$HYP_DENOM" | tee -a "$HERE/runs.log"
+echo "$(date) ours run $NAME harness=$HARNESS cw=$CW ${R}x${B} gate=$GATE history=$HISTORY report_every=$REPORT_EVERY nofiles=$NOFILES repeat_cost=$REPEAT_COST hypothesis_every=$HYPOTHESIS_EVERY reserve=$RESERVE hyp_fresh=$HYP_FRESH hyp_denom=$HYP_DENOM hyp_dedup=$HYP_DEDUP" | tee -a "$HERE/runs.log"
 MI=(); [ "$HARNESS" = codex ] && MI=(--model-info-dir "$HERE/model_info")
 ~/.ours/bin/ours run --harness "$HARNESS" --model gpt-6.1-terra --context-window "$CW" --lane subscription \
   ${MI[@]+"${MI[@]}"} --prompt "$PROMPT" ${FOLLOW[@]+"${FOLLOW[@]}"} --task "$NAME" --seed "$HERE/seed_empty" \

@@ -9,9 +9,11 @@ submits 5 modules of 5 tested genes, graded with evaluator.grade_module:
                hit's looked-up neighbours were themselves same-sign hits (perfect bookkeeping of
                scores and lookups; the reference for an agent that keeps both)
     frozen     nbr_hits' modules from the first checkpoint, resubmitted unchanged (what most agents did)
+    dup5       nbr_hits' best module submitted 5 times (what plain Codex did in the fresh+found pilot)
 
 With --fresh each module must include a gene tested since the last checkpoint (hits and nbr_hits build
 around fresh hits; random and frozen do not adapt), and --denom found grades on held-out genes found.
+--dedup counts each same-sign held-out hit once per checkpoint (evaluator --hypothesis-dedup).
 
     bio/.venv/bin/python -I bio/hypothesis_baselines.py --rounds 30 --batch 16 --every 10 --seeds 0 1 2 3 4
     bio/.venv/bin/python -I bio/hypothesis_baselines.py --rounds 100 --batch 32 --fresh --denom found
@@ -25,7 +27,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from baselines import _nbr_pick  # noqa: E402
 from env import BioEnv  # noqa: E402
-from evaluator import grade_module  # noqa: E402
+from evaluator import dedup_score, grade_module  # noqa: E402
 
 N_MOD, N_GENES = 5, 5
 
@@ -76,10 +78,11 @@ def strategies(env, looked, rng, fresh=None):
             x = max(sorted(cand), key=link)
             m["genes"] = m["genes"] + [x]; taken.add(x)
     out["nbr_hits"] = best
+    out["dup5"] = [dict(best[0]) for _ in range(N_MOD)] if best else []
     return out
 
 
-def run(seed, rounds, batch, every, heldout, reserve, use_fresh=False, denom="fixed"):
+def run(seed, rounds, batch, every, heldout, reserve, use_fresh=False, denom="fixed", dedup=False):
     env = BioEnv("IFNG", rounds=rounds, batch=batch, anonymize=True, seed=seed, features="depmap")
     if reserve:
         env.set_reserve(reserve, seed + 1)
@@ -105,8 +108,9 @@ def run(seed, rounds, batch, every, heldout, reserve, use_fresh=False, denom="fi
                 first = [dict(m) for m in strat["nbr_hits"]]
             strat["frozen"] = first
             for name, mods in strat.items():
-                s = sum(grade_module(env, m["genes"], m["sign"], heldout, denom=denom,
-                                     fresh=fresh if use_fresh else None)["score"] for m in mods) / N_MOD
+                g = [grade_module(env, m["genes"], m["sign"], heldout, denom=denom,
+                                  fresh=fresh if use_fresh else None) for m in mods]
+                s = dedup_score(g, N_MOD, heldout) if dedup else sum(x["score"] for x in g) / N_MOD
                 scores.setdefault(name, []).append(s)
             prev = env.round
     return {k: float(np.mean(v)) for k, v in scores.items()}, env.log[-1].cum_hits
@@ -122,8 +126,9 @@ if __name__ == "__main__":
     ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     ap.add_argument("--fresh", action="store_true")
     ap.add_argument("--denom", choices=["fixed", "found"], default="fixed")
+    ap.add_argument("--dedup", action="store_true")
     a = ap.parse_args()
-    rows = [run(s, a.rounds, a.batch, a.every, a.heldout, a.reserve, a.fresh, a.denom) for s in a.seeds]
+    rows = [run(s, a.rounds, a.batch, a.every, a.heldout, a.reserve, a.fresh, a.denom, a.dedup) for s in a.seeds]
     for name in rows[0][0]:
         v = [r[0][name] for r in rows]
         print(f"{a.rounds}x{a.batch} {name:9s} mean hypothesis score {np.mean(v):.3f} (seeds {', '.join(f'{x:.3f}' for x in v)})")

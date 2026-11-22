@@ -121,3 +121,13 @@ What this says about the task:
   per-module set drawn from a larger reserve) would cut this noise.
 - Possible fixes: require modules to change (e.g. grade only modules containing a gene tested
   since the last checkpoint), or grade at the end only on modules built from late-tested genes.
+
+### Grading v2 pilot and v3 fix (Nov 21-22)
+
+30x16 pilot with fresh + found (1 seed per arm): the fresh rule worked (the prototype rebuilt its modules
+every checkpoint; plain Codex kept 9 of 10 genes and swapped one), but plain Codex scored 0.50 by
+submitting 5 near-copies of one module, all graded on the same held-out genes. Counting each held-out gene
+once per checkpoint (`--hypothesis-dedup`, score /40) gives 0.117 vs the prototype's 0.017. Offline, the
+copy strategy beats all honest ones without dedup at 30x16 (0.120 vs 0.039) and drops to random with it;
+at 100x32 with dedup, nbr_hits 0.106, hits 0.065, random 0.017. Next: 100x32 v3, 3 seeds per arm, after
+the Nov 27 reset (needs approval). Details in `bio/RESULTS.md`.

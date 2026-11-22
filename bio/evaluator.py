@@ -77,8 +77,19 @@ def grade_module(env: BioEnv, genes: list[str], sign: str, n_heldout: int = 8, m
         score = len(good) / n_heldout
     if fresh is not None and not rec["fresh_members"]:
         score = 0.0
-    rec.update(heldout=held, score=score, member_precision=mem_good / len(members))
+    rec.update(heldout=held, good=good, score=score, member_precision=mem_good / len(members))
     return rec
+
+
+def dedup_score(graded: list[dict], n_modules: int, n_heldout: int) -> float:
+    """Each same-sign held-out hit counts once per checkpoint, over modules that scored (fresh, enough held-out);
+    sets m["new_good"] on each module. Score = distinct good / (n_modules x n_heldout)."""
+    credited: set = set()
+    for m in graded:
+        new = [h for h in m.get("good", []) if h not in credited] if m["score"] > 0 else []
+        m["new_good"] = len(new)
+        credited.update(new)
+    return len(credited) / (n_modules * n_heldout)
 HELP = __doc__.split("Scores are revealed")[0].strip()
 
 
@@ -105,7 +116,8 @@ class Evaluator:
                  gate: RoundGate | None = None, history_mode: str = "full", report_every: int = 0,
                  report_n: int = 10, hypothesis_every: int = 0, hypothesis_modules: int = 5,
                  hypothesis_max_genes: int = 10, hypothesis_heldout: int = 8,
-                 hypothesis_fresh: bool = False, hypothesis_denom: str = "fixed"):
+                 hypothesis_fresh: bool = False, hypothesis_denom: str = "fixed",
+                 hypothesis_dedup: bool = False):
         if history_mode not in HISTORY_MODES:
             raise ValueError(f"history_mode must be one of {HISTORY_MODES}")
         self.gate, self.history_mode = gate, history_mode
@@ -120,6 +132,9 @@ class Evaluator:
         self.hypothesis_every, self.hypothesis_modules = hypothesis_every, hypothesis_modules
         self.hypothesis_max_genes, self.hypothesis_heldout = hypothesis_max_genes, hypothesis_heldout
         self.hypothesis_fresh, self.hypothesis_denom = hypothesis_fresh, hypothesis_denom
+        # dedup: each same-sign held-out hit counts once per checkpoint, so copies of one module add nothing;
+        # checkpoint score = distinct good held-out genes over scoring modules / (modules x heldout)
+        self.hypothesis_dedup = hypothesis_dedup
         self.hypothesis_due: int | None = None
         self.hypotheses: list[dict] = []
         self.on_done = None
@@ -208,7 +223,9 @@ class Evaluator:
                                      f"{self.hypothesis_max_genes} genes you have tested that you believe act together, "
                                      f"each with the sign (+ or -) you predict for their untested neighbours."
                                      + (" Only modules containing at least one gene you tested since the last "
-                                        "hypothesis are scored." if self.hypothesis_fresh else ""))
+                                        "hypothesis are scored." if self.hypothesis_fresh else "")
+                                     + (" Each held-out gene counts once per hypothesis, so overlapping modules "
+                                        "add nothing." if self.hypothesis_dedup else ""))
         if self.gate and not e.done:
             out["next"] = "Round closed. Stop here and end your turn; the next user message gives the next round's token."
         return out
@@ -252,6 +269,8 @@ class Evaluator:
             graded.append(grade_module(e, genes[:self.hypothesis_max_genes], str(m.get("sign", "")).strip(),
                                        self.hypothesis_heldout, denom=self.hypothesis_denom, fresh=fresh))
         score = sum(g["score"] for g in graded) / self.hypothesis_modules  # missing modules count as 0
+        if self.hypothesis_dedup:
+            score = dedup_score(graded, self.hypothesis_modules, self.hypothesis_heldout)
         rec = {"after_round": self.hypothesis_due, "score": score, "modules": graded,
                "untested_named": sum(len([x for x in (m.get("genes") or []) if str(x) not in e.tested])
                                      for m in modules[:self.hypothesis_modules] if isinstance(m.get("genes"), list))}
@@ -363,6 +382,8 @@ def main() -> None:
                     help="score only modules with a gene tested since the last hypothesis (no resubmitting old modules)")
     ap.add_argument("--hypothesis-denom", choices=["fixed", "found"], default="fixed",
                     help="fixed: score = good / 8; found: good / held-out genes actually found (at least 3)")
+    ap.add_argument("--hypothesis-dedup", action="store_true",
+                    help="each held-out hit counts once per checkpoint: score = distinct good / (modules x heldout)")
     ap.add_argument("--reserve", type=float, default=0.0,
                     help="fraction of genes held out from testing as the hypothesis grading set (drawn from the seed)")
     ap.add_argument("--constraint-top", type=int, default=0, help="batch constraint: size of the moving top set (0 = off)")
@@ -379,7 +400,7 @@ def main() -> None:
     gate = RoundGate([h for h in a.round_token_hashes.split(",") if h]) if a.round_token_hashes else None
     ev = Evaluator(env, a.out, a.proposals_per_round, a.lookups, gate, a.history, a.report_every, a.report_n,
                    hypothesis_every=a.hypothesis_every, hypothesis_fresh=a.hypothesis_fresh,
-                   hypothesis_denom=a.hypothesis_denom)
+                   hypothesis_denom=a.hypothesis_denom, hypothesis_dedup=a.hypothesis_dedup)
     out = Path(a.out)
     (out / "config.json").write_text(json.dumps(vars(a)))
     if a.secret_seed:

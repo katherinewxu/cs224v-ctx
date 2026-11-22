@@ -667,3 +667,42 @@ At 30x16 (fresh + found): random 0.020, hits 0.034, nbr_hits 0.039, frozen 0.000
 - **Grading gap to fix before 100x32 v2:** overlapping modules should not be graded again on the
   same held-out genes. Options: require disjoint members (later overlapping modules score 0), or
   score the checkpoint as distinct same-sign held-out hits / 40, as in the column above.
+
+## Hypothesis grading v3: count each held-out gene once (Nov 22)
+
+New option `--hypothesis-dedup` (`HYP_DEDUP=1`), off by default: each same-sign held-out hit counts once
+per checkpoint, over modules that score under the other rules. Checkpoint score = distinct good held-out
+genes / (5 modules x 8) = /40, so copies of one module add nothing. The task text and `hypothesis_due`
+message say so. 18 tests pass.
+
+Offline references (5 seeds; `dup5` = the best `nbr_hits` module submitted 5 times):
+
+| | 100x32 fresh+found | 100x32 fresh+found+dedup | 30x16 fresh+found | 30x16 fresh+found+dedup |
+|---|---|---|---|---|
+| random | 0.027 | 0.017 | 0.020 | 0.013 |
+| hits | 0.105 | 0.065 | 0.035 | 0.015 |
+| nbr_hits | 0.218 | 0.106 (0.028-0.182) | 0.039 | 0.020 |
+| dup5 | 0.148 | 0.019 | **0.120** | 0.015 |
+| frozen | 0.012 | 0.006 | 0.000 | 0.000 |
+
+Without dedup, `dup5` beats every honest strategy at 30x16 (0.120 vs 0.039), which is what plain Codex
+did in the pilot. With dedup it drops to about random, while `nbr_hits` stays about 6x random at 100x32.
+At 30x16 everything is still within noise.
+
+Saved runs re-scored from run.json (`bio/rescore_hypotheses.py`). The hyp_* runs were not told about the
+fresh or dedup rules, so their v2/v3 numbers are hypothetical (their modules froze, so they score low):
+
+| run | old | fresh+found | fresh+found+dedup |
+|---|---|---|---|
+| hyp_ours_s0 / s1 / s2 | 0.156 / 0.047 / 0.137 | 0.038 / 0.003 / 0.025 | n/a* / 0.003 / 0.008 |
+| hyp_base_s0 / s1 / s2 | 0.102 / 0.192 / 0.082 | 0.020 / 0.073 / 0.048 | 0.008 / 0.030 / 0.013 |
+| hyp_ours_30x16 / hyp_base_30x16 | 0.050 / 0.008 | 0.043 / 0.022 | 0.025 / 0.008 |
+| hypf_ours_30x16 / hypf_base_30x16 (told fresh+found) | 0.027 / 0.496 | 0.027 / 0.496 | 0.017 / 0.117 |
+
+*hyp_ours_s0 stopped at round 99 and never revealed its seed, so held-out gene identities can't be
+recovered for dedup.
+
+**Plan for 100x32 v3 (after the Nov 27 reset, needs approval):** 3 seeds per arm with
+`HYP_FRESH=1 HYP_DENOM=found HYP_DEDUP=1`, otherwise the same settings. The offline gap between
+`nbr_hits` (0.106) and `hits` (0.065) / `random` (0.017) is the room for the arms to separate. Expected
+quota about 65-75%.
