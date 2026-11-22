@@ -645,3 +645,25 @@ modules and adds the most-linked fresh same-sign hit to each):
 
 At 30x16 (fresh + found): random 0.020, hits 0.034, nbr_hits 0.039, frozen 0.000. Too few hits by round
 30 to separate strategies, so the 30x16 pilot checks mechanics only.
+
+### 30x16 pilot with fresh + found (Nov 21-22, 1 seed per arm)
+
+| run | hits | hypothesis score | each held-out gene once (/40) | report | repeats | files | input tokens | wall | quota |
+|---|---|---|---|---|---|---|---|---|---|
+| hypf_ours_30x16 (prototype) | 45 | 0.027 (0 / 0.08 / 0) | 0.017 | 1.0 | 0 | 8 | 5.4M | 43 min | 7% |
+| hypf_base_30x16 (plain Codex) | 46 | 0.496 (0.63 / 0.55 / 0.30) | 0.117 | 1.0 | 0 | 0 | 2.2M | 27 min | 3% |
+
+- **The fresh rule works mechanically.** Every module either had a fresh member or scored 0. The
+  prototype rebuilt its modules at every checkpoint (it kept only 2 and 1 genes from the previous
+  set). Plain Codex kept 9 of 10 members and swapped in one fresh gene, which the rule allows.
+- **Plain Codex's 0.50 is mostly duplication.** It submitted 5 near-copies of one 10-gene "+" module
+  (15 distinct genes in 50 slots), so all five were graded on the same 7-10 held-out genes. That's
+  one bet on a real cluster counted five times. With each held-out gene counted once (out of 5 x 8 =
+  40), it scores 0.117, still well above the prototype's 0.017 and above the offline nbr_hits
+  reference at 30x16 (0.039). So its cluster is real, but the score is inflated about 4x.
+- **The prototype's modules were weak:** member precision 0-0.75 (non-hits included), and none of its
+  15 modules found more than 2 same-sign held-out hits.
+- **Isolation:** 0 flags in both runs. Quota went from 54% to 64%.
+- **Grading gap to fix before 100x32 v2:** overlapping modules should not be graded again on the
+  same held-out genes. Options: require disjoint members (later overlapping modules score 0), or
+  score the checkpoint as distinct same-sign held-out hits / 40, as in the column above.
