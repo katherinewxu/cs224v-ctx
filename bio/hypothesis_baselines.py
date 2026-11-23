@@ -38,7 +38,7 @@ def strategies(env, looked, rng, fresh=None):
     hit = {g for g in tested if env.is_hit(g)}
     out = {"random": [{"genes": list(rng.choice(tested, N_GENES, replace=False)), "sign": rng.choice(["+", "-"])}
                       for _ in range(N_MOD)]}
-    by_sign = {s: [g for g in hit if (sc[g] > 0) == (s == "+")] for s in "+-"}
+    by_sign = {s: [g for g in sorted(hit) if (sc[g] > 0) == (s == "+")] for s in "+-"}  # sorted: set order varies by process
     mods = []
     for s in sorted(by_sign, key=lambda s: -len(by_sign[s])):
         pool = list(by_sign[s]); rng.shuffle(pool)

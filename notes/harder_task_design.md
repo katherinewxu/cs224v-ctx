@@ -129,5 +129,5 @@ every checkpoint; plain Codex kept 9 of 10 genes and swapped one), but plain Cod
 submitting 5 near-copies of one module, all graded on the same held-out genes. Counting each held-out gene
 once per checkpoint (`--hypothesis-dedup`, score /40) gives 0.117 vs the prototype's 0.017. Offline, the
 copy strategy beats all honest ones without dedup at 30x16 (0.120 vs 0.039) and drops to random with it;
-at 100x32 with dedup, nbr_hits 0.106, hits 0.065, random 0.017. Next: 100x32 v3, 3 seeds per arm, after
+at 100x32 with dedup, nbr_hits 0.106, hits 0.067, random 0.017. Next: 100x32 v3, 3 seeds per arm, after
 the Nov 27 reset (needs approval). Details in `bio/RESULTS.md`.

@@ -37,7 +37,7 @@ modules. We then ran 100x32, 3 seeds per arm
 (Nov 20-21):
 - **Hypothesis score: a tie.** Prototype 0.156 / 0.047 / 0.137 (mean 0.11), plain Codex 0.102 /
   0.192 / 0.082 (mean 0.13). The spread between seeds is bigger than the gap. Both arms land
-  between grouping hits at random (0.08) and the neighbour-grouping reference (0.16).
+  between grouping hits at random (0.11) and the neighbour-grouping reference (0.16).
 - **Hits: the prototype leads on every seed**, 198 / 215 / 218 vs 188 / 185 / 189. Plain Codex wrote
   120+ files in every seed but still re-proposed 161 and 195 tested genes in two of them. The
   one seed where it kept an exact record had the best hypothesis score of all six runs.

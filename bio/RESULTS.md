@@ -639,7 +639,7 @@ modules and adds the most-linked fresh same-sign hit to each):
 | 100x32 | old rule | fresh only | found only | fresh + found |
 |---|---|---|---|---|
 | random | 0.021 | 0.021 | 0.029 | 0.027 |
-| hits | 0.087 | 0.087 | 0.118 | 0.103 |
+| hits | 0.108 | not re-run | not re-run | 0.114 |
 | nbr_hits | 0.155 | 0.158 | 0.228 | 0.218 (0.055-0.383) |
 | frozen | 0.090 | 0.008 | 0.129 | 0.012 |
 
@@ -680,7 +680,7 @@ Offline references (5 seeds; `dup5` = the best `nbr_hits` module submitted 5 tim
 | | 100x32 fresh+found | 100x32 fresh+found+dedup | 30x16 fresh+found | 30x16 fresh+found+dedup |
 |---|---|---|---|---|
 | random | 0.027 | 0.017 | 0.020 | 0.013 |
-| hits | 0.105 | 0.065 | 0.035 | 0.015 |
+| hits | 0.114 | 0.067 | 0.040 | 0.020 |
 | nbr_hits | 0.218 | 0.106 (0.028-0.182) | 0.039 | 0.020 |
 | dup5 | 0.148 | 0.019 | **0.120** | 0.015 |
 | frozen | 0.012 | 0.006 | 0.000 | 0.000 |
@@ -704,5 +704,10 @@ recovered for dedup.
 
 **Plan for 100x32 v3 (after the Nov 27 reset, needs approval):** 3 seeds per arm with
 `HYP_FRESH=1 HYP_DENOM=found HYP_DEDUP=1`, otherwise the same settings. The offline gap between
-`nbr_hits` (0.106) and `hits` (0.065) / `random` (0.017) is the room for the arms to separate. Expected
+`nbr_hits` (0.106) and `hits` (0.067) / `random` (0.017) is the room for the arms to separate. Expected
 quota about 65-75%.
+
+**Correction (Nov 23):** the `hits` strategy in `bio/hypothesis_baselines.py` iterated over a Python set,
+so its gene order (and score) varied between processes. It now sorts first; the `hits` rows above are
+re-run (100x32: 0.108 old rule, 0.114 fresh+found, 0.067 with dedup; 30x16: 0.040 and 0.020). Other
+strategies were already deterministic and are unchanged. The fresh-only and found-only cells were not re-run.
