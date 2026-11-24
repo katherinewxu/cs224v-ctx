@@ -16,7 +16,9 @@ its task text):
 Background and offline references: `bio/RESULTS.md`, last three sections.
 
 ## Setup (once)
-1. `git pull` on `main` of kkarenvoo05/cs224v-ctx (needs commit 2705a56 or later).
+1. Get the code from Katherine's fork (your repo's `main` is still at the PR #1 merge):
+   `git remote add kx https://github.com/katherinewxu/cs224v-ctx.git && git fetch kx && git checkout -b v3 kx/main`
+   (needs commit 21b1509 or later; or merge a PR from it into your `main` first).
 2. Prototype installed at `~/.ours/bin/ours`, logged in with your ChatGPT account (as for your
    Nov 10-13 runs).
 3. `ours/model_info/gpt-6.1-terra.json`: Katherine will send you this file (model settings only, no
