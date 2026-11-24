@@ -77,7 +77,7 @@ grouping hits by shared neighbours scores 0.106, 6x random.
 
 | 100x32, v3 rules | hits | hypothesis score | repeats | tokens |
 |---|---|---|---|---|
-| prototype | s0: [running] | | | |
+| prototype | s0: 194 | s0: 0.048 | s0: 2 | s0: 23.8M |
 | plain Codex | s0: 205 | s0: 0.055 | s0: 18 | s0: 12.0M |
 | offline references | – | neighbours 0.106 · hit groups 0.067 · random 0.017 | | |
 

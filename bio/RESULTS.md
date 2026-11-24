@@ -711,3 +711,24 @@ quota about 65-75%.
 so its gene order (and score) varied between processes. It now sorts first; the `hits` rows above are
 re-run (100x32: 0.108 old rule, 0.114 fresh+found, 0.067 with dedup; 30x16: 0.040 and 0.020). Other
 strategies were already deterministic and are unchanged. The fresh-only and found-only cells were not re-run.
+
+## 100x32 with v3 grading (fresh + found + dedup), seed 0 (Nov 23)
+
+| run | hits | hypothesis score | report | repeats | files | compactions | input tokens | wall | quota |
+|---|---|---|---|---|---|---|---|---|---|
+| v3_ours_s0 (prototype) | 194 | 0.048 | 1.0 | 2 | 10 | 226 | 23.8M | 216 min | 15% |
+| v3_base_s0 (plain Codex) | 205 | 0.055 | 0.92 | 18 | 312 | 138 | 12.0M | 100 min | 14% |
+| offline references | – | neighbours 0.106 · hit groups 0.067 · random 0.017 | | | | | | | |
+
+- **The rules worked as intended.** Both arms submitted 5 distinct modules at every checkpoint
+  (no duplicates) and rebuilt them each time: they kept 0-7 genes from the previous set, except plain
+  Codex's last checkpoint (21 of 26 kept, with fresh genes added).
+- **Hypothesis scores: a tie, both between random (0.017) and random hit groups (0.067).** Neither
+  arm reaches the neighbour-grouping reference (0.106). Member precision varied 0.17-0.82 per
+  checkpoint: both arms often put non-hits in their modules.
+- **Hits: plain Codex ahead this seed (205 vs 194)**, unlike all three v1 seeds. Plain Codex wrote 312
+  files and still repeated 18 genes; the prototype repeated 2.
+- **Isolation:** the 3 flags in plain Codex are again JS variables named `ps` (`const ps=load(...)`);
+  none in the prototype.
+- Cost as before: prototype about 2x tokens and wall time; this pair took weekly usage from 64% to 93%.
+- Seeds 1-2: `ours/run_v3_s12.sh` (on Karen's account or after the Nov 27 reset).
