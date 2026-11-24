@@ -149,7 +149,36 @@ def fig_pilot():
     s.save("pilot_dedup.svg")
 
 
+def fig_diagnosis():
+    """Module members by type (v3 seed 0): good / known non-hit added as a new gene / other known bad."""
+    d = {r["run"]: r for r in json.load(open("ours/diagnose_modules_nov23.json"))}
+    s = Svg(760, 330); L, T, R = 170, 70, 720
+    s.text(20, 30, "What went into the modules (v3 rules, seed 0): the facts were known", 18, weight="bold")
+    parts = [("good (hit, right sign)", BLUE), ("new gene, known non-hit", ORANGE), ("other, score known", GRAY),
+             ("score missing from files", "#e34948")]
+    for i, (run, lab) in enumerate((("v3_ours_s0", "prototype"), ("v3_base_s0", "plain Codex"))):
+        r = d[run]; y = T + i * 80; n = r["members"]
+        vals = [r["good"], r["bad: fresh non-hit, score known"],
+                r["bad: files had the correct score"] - r["bad: fresh non-hit, score known"],
+                r["bad: no score in files"] + r["bad: files had a wrong score"]]
+        s.text(L - 12, y + 32, lab, 15, INK, "end", "bold")
+        x = L
+        for (pl, color), v in zip(parts, vals):
+            w = (R - L) * v / n
+            if w > 0:
+                s.el.append(f"<rect x='{x:.1f}' y='{y + 10}' width='{max(w - 2, 0):.1f}' height='34' rx='3' fill='{color}'/>")
+                if w > 40:
+                    s.text(x + w / 2, y + 32, str(v), 13, "#ffffff", "middle", "bold")
+            x += w
+        s.text(R, y + 62, f"{n} members", 12, INK2, "end")
+    for j, (pl, color) in enumerate(parts):
+        s.el.append(f"<rect x='{20 + j * 185}' y='{T + 182}' width='14' height='14' rx='2' fill='{color}'/>")
+        s.text(40 + j * 185, T + 194, pl, 13, INK2)
+    s.text(20, T + 232, "Same agents' data, neighbour grouping: 0.095 and 0.100 vs the agents' 0.048 and 0.055.", 14, INK)
+    s.save("diagnosis_modules.svg")
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    fig_hits(); fig_repeats(); fig_grading(); fig_pilot()
+    fig_hits(); fig_repeats(); fig_grading(); fig_pilot(); fig_diagnosis()
     print(sorted(p.name for p in OUT.glob("*.svg")))

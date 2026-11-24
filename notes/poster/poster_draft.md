@@ -81,12 +81,28 @@ grouping hits by shared neighbours scores 0.106, 6x random.
 | plain Codex | s0: 205 | s0: 0.055 | s0: 18 | s0: 12.0M |
 | offline references | – | neighbours 0.106 · hit groups 0.067 · random 0.017 | | |
 
+## 6b. Why are hypothesis scores low? Not memory: reasoning (right column)
+[figure: `figs/diagnosis_modules.svg`]
+
+- Checked every module member against the truth and against the agent's own files at that moment: in
+  7 of 8 runs, **every** bad member's correct score was already in the agent's files.
+- Most bad members under v3 are **newly tested genes the agent knew were not hits** (55 of 83 for the
+  prototype, 90 of 132 for plain Codex): the rule needs one new gene per module; both agents filled
+  modules with new genes.
+- Given **exactly the agents' own data**, simple neighbour grouping scores 0.095 / 0.100, about 2x
+  the agents (0.048 / 0.055).
+- After compaction, the prototype re-read its memory files every time (666 of 668, within 2 tool
+  calls; its summary lists its files). Plain Codex did so after 68-98% of compactions, and its
+  repeats cluster in rounds with a compaction.
+
 ## 7. Takeaways (right column, bottom)
 - **Memory matters when the agent can't or doesn't write it down.** The prototype's structured
   files kept the tested set exact in every run; plain Codex's record depended on whether it chose to
   keep files.
 - **The prototype's edge is in hits, not reasoning (so far):** +23 hits per run on average; hypothesis
   scores tie under the original grading.
+- **The bottleneck has moved from memory to reasoning.** Both agents had the facts; neither used
+  them as well as a two-line grouping rule.
 - **Long-horizon benchmarks must be adversarially graded.** Both agents found shortcuts (frozen
   answers, duplicates) within one pilot. Offline strategies (random, copy, freeze) are cheap checks.
 - **Cost:** about 2x tokens and wall time for the prototype.

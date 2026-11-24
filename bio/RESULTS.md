@@ -732,3 +732,50 @@ strategies were already deterministic and are unchanged. The fresh-only and foun
   none in the prototype.
 - Cost as before: prototype about 2x tokens and wall time; this pair took weekly usage from 64% to 93%.
 - Seeds 1-2: `ours/run_v3_s12.sh` (on Karen's account or after the Nov 27 reset).
+
+## Diagnosis: memory or reasoning? (Nov 23, no model calls)
+
+### Module errors (`ours/diagnose_modules.py`, output `ours/diagnose_modules_nov23.json`)
+Every module member at every checkpoint, checked against the evaluator's ground truth and against what the
+agent's own files held just before that hypothesis call (prototype: per-step workspace commits; plain
+Codex: final files filtered by write time, an upper bound).
+
+| run | members | good | bad | bad, files had the correct score | bad, no score in files | bad, newly tested non-hit with known score | agent v3 score | same data, neighbour grouping (v3) |
+|---|---|---|---|---|---|---|---|---|
+| v3_ours_s0 | 206 | 123 (60%) | 83 | 83 | 0 | 55 | 0.048 | 0.095 |
+| v3_base_s0 | 235 | 103 (44%) | 132 | 132 | 0 | 90 | 0.055 | 0.100 |
+| hyp_ours s0/s1/s2 | 219/251/322 | 92/82/88% | 18/46/39 | all | 0 | 4/7/3 | (not told v3 rules) | |
+| hyp_base s0/s1/s2 | 248/336/227 | 93/97/94% | 17/9/13 | 3/9/8 | 14/0/5 | 3/2/3 | (not told v3 rules) | |
+
+- **Memory is not why hypothesis scores are low.** In 7 of 8 runs, every bad member's correct score was in
+  the agent's own files at the time; the only memory gaps (14 and 5 members) are in the two plain Codex runs
+  that also repeated 161 and 195 genes.
+- **It is reasoning (selection).** In the v3 runs most bad members are newly tested genes the agent knew
+  were not hits (55 of 83 prototype, 90 of 132 plain Codex). The fresh rule asks for one new gene per
+  module; both agents filled modules with new genes (138/206 and 176/235 members fresh), hits or not.
+- **Same information, half the score.** The neighbour-grouping strategy run on exactly each agent's tested
+  genes and lookups at each checkpoint scores 0.095 and 0.100 (v3); the agents scored 0.048 and 0.055.
+- Every good member in every run had been looked up by the agent; members never looked up were never good.
+  So the agents group well only among genes whose neighbour lists they saw.
+- Caveat: hyp_base_s1 has 11 accepted hypothesis calls for 10 checkpoints, so one checkpoint's snapshot
+  may be one call off.
+
+### After compaction (`ours/compaction_analysis.py`, output `ours/compaction_analysis_nov23.md`)
+
+| run | compactions | read memory before next compaction | proposed before reading memory | repeats | repeats/round with vs without compaction |
+|---|---|---|---|---|---|
+| v3_ours_s0 | 226 | 226/226 | 33 | 2 | 0.02 / 0.00 |
+| v3_base_s0 | 138 | 132/138 | 36 | 18 | 0.22 / 0.00 |
+| hyp_ours s1 / s2 | 222 / 220 | 222/222, 218/220 | 37 / 32 | 3 / 3 | 0.03 / 0.00 each |
+| hyp_base s0 / s1 / s2 | 142 / 110 / 114 | 124/142, 75/110, 98/114 | 26 / 60 / 34 | 161 / 4 / 195 | 1.78/0.89, 0.01/0.20, 2.06/1.50 |
+| nf_base s0 / s1 (no files) | 39 / 187 | 0/39, 135/187 (JS store) | 38 / 48 | 811 / 1,167 | 9.44/7.26, 12.24/11.12 |
+
+- **The prototype goes back to its memory after essentially every compaction** (666 of 668 across three
+  runs), usually within 2 tool calls; its compaction summary names its data files. Plain Codex does so after
+  68-98% of compactions when it keeps files, and proposes before re-reading more often (up to 55% in
+  hyp_base_s1).
+- **Repeats cluster in rounds with a compaction** in the plain Codex runs that repeat: 1.8 vs 0.9 and 2.1 vs
+  1.5 per round with files, 9.4 vs 7.3 and 12.2 vs 11.1 without. A modest effect, and confounded with round
+  number (both grow later in the run); the prototype's repeats are near zero either way.
+- "Memory read" is a pattern match on tool-call text (a read command on a workspace data file, or the JS
+  store's `load()`); spot-checked, not exhaustive.
