@@ -63,16 +63,16 @@ def axes(s, L, T, R, B, xmax, ymax, xstep, ystep, xlabel, ylabel, fmt=str):
 
 def fig_hits():
     s = Svg(800, 470); L, T, R, B = 80, 60, 600, 370
-    s.text(20, 30, "Cumulative hits, 100 rounds x 32 genes (3 seeds per arm)", 18, weight="bold")
+    s.text(20, 30, "Cumulative hits, 100 rounds x 32 genes (4 runs per arm)", 18, weight="bold")
     sx, sy = axes(s, L, T, R, B, 100, 250, 20, 50, "round", "hits found")
     ends = {}
     for arm, color in (("base", ORANGE), ("ours", BLUE)):
-        for k in range(3):
-            r = runs(f"hyp_{arm}_s{k}")
+        for name in [f"hyp_{arm}_s{k}" for k in range(3)] + [f"v3_{arm}_s0"]:
+            r = runs(name)
             s.path([(sx(0), sy(0))] + [(sx(i + 1), sy(x["cum_hits"])) for i, x in enumerate(r)], color, 2, opacity=0.9)
             ends.setdefault(arm, []).append(r[-1]["cum_hits"])
-    s.text(R + 8, sy(sum(ends["ours"]) / 3) + 5, f"prototype {min(ends['ours'])}-{max(ends['ours'])}", 14, INK)
-    s.text(R + 8, sy(sum(ends["base"]) / 3) + 22, f"plain Codex {min(ends['base'])}-{max(ends['base'])}", 14, INK)
+    s.text(R + 8, sy(sum(ends["ours"]) / len(ends["ours"])) + 5, f"prototype {min(ends['ours'])}-{max(ends['ours'])}", 14, INK)
+    s.text(R + 8, sy(sum(ends["base"]) / len(ends["base"])) + 22, f"plain Codex {min(ends['base'])}-{max(ends['base'])}", 14, INK)
     s.swatch(L, 455, BLUE, "prototype (Codex + structured context)"); s.swatch(L + 360, 455, ORANGE, "plain Codex")
     s.save("hits_100x32.svg")
 

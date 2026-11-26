@@ -45,14 +45,16 @@ Measures: hits; repeats; a top-10 recall probe every 10 rounds; graded hypothese
 - Allowed to write files, plain Codex usually keeps its own exact record (0 repeats in one seed),
   but not always (161 and 195 repeats in two later seeds despite 120+ files).
 
-## 4. Finding 2: the prototype finds more hits, at about 2x the cost (middle column)
+## 4. Finding 2: the prototype finds somewhat more hits, at about 2x the cost (middle column)
 [figure: `figs/hits_100x32.svg`]
 
-| 100x32, 3 seeds | hits | repeats | input tokens / run |
-|---|---|---|---|
-| prototype | 198* / 215 / 218 (mean 210) | 28 / 3 / 3 | 21-24M |
-| plain Codex | 188 / 185 / 189 (mean 187) | 161 / 4 / 195 | 11-12M |
+| 100x32, 4 runs | hits | repeats | input tokens / run | wall time |
+|---|---|---|---|---|
+| prototype | 198* / 215 / 218 / 194 (mean 206) | 28 / 3 / 3 / 2 | 21-24M | about 3.5 h |
+| plain Codex | 188 / 185 / 189 / 205 (mean 192) | 161 / 4 / 195 / 18 | 11-12M | about 1.6 h |
 
++14.5 hits (+8%) for 2x tokens; the ranges overlap (permutation p = 0.07, one-sided). The 4th run of
+each arm is v3 seed 0 (same settings, final grading rules).
 \* stopped at round 99 on the usage limit. A no-LLM heuristic with the same lookups gets about 221
 hits, so hits alone are an easy target: the task needs more than a flat log to separate memory
 designs.
@@ -92,15 +94,15 @@ grouping hits by shared neighbours scores 0.106, 6x random.
 - Given **exactly the agents' own data**, simple neighbour grouping scores 0.095 / 0.100, about 2x
   the agents (0.048 / 0.055).
 - After compaction, the prototype re-read its memory files every time (666 of 668, within 2 tool
-  calls; its summary lists its files). Plain Codex did so after 68-98% of compactions, and its
-  repeats cluster in rounds with a compaction.
+  calls; its summary lists its files). Plain Codex did so after 68-98% of compactions. Its repeats
+  build up over the run rather than spiking at compactions: forgetting is cumulative.
 
 ## 7. Takeaways (right column, bottom)
 - **Memory matters when the agent can't or doesn't write it down.** The prototype's structured
   files kept the tested set exact in every run; plain Codex's record depended on whether it chose to
   keep files.
-- **The prototype's edge is in hits, not reasoning (so far):** +23 hits per run on average; hypothesis
-  scores tie under the original grading.
+- **The prototype's edge in hits is small and uncertain:** +14 hits per run on average over 4 runs,
+  and the ranges overlap; hypothesis scores tie.
 - **The bottleneck has moved from memory to reasoning.** Both agents had the facts; neither used
   them as well as a two-line grouping rule.
 - **Long-horizon benchmarks must be adversarially graded.** Both agents found shortcuts (frozen
@@ -111,6 +113,6 @@ grouping hits by shared neighbours scores 0.106, 6x random.
 "Long-horizon agents have to compact their context. We asked whether a harness with structured
 external memory beats plain Codex on a 100-round gene screen where each result is shown once. When
 plain Codex doesn't keep files, it forgets what it already tested and wastes hundreds of experiments,
-while the prototype stays exact and finds about 12% more hits, at twice the cost. Our second finding
+while the prototype stays exact, at twice the cost. Our second finding
 is about measurement: when we asked the agents for hypotheses, they found shortcuts, like copying one
 answer five times, so we made the grader adversarial. Come see how each fix changed the scores."

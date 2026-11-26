@@ -605,7 +605,7 @@ Reading:
 - **Hypothesis score: no difference.** The means are 0.113 vs 0.125, and the seed spread (0.05-0.19) is
   larger than the gap. Both arms submitted 5 modules every checkpoint, and both beat random and
   same-sign hits. Neither reliably beats nbr_hits.
-- **Hits: the prototype is ahead on every seed** (+23 mean), because plain Codex lost the tested set in
+- **Hits: the prototype is ahead on every seed** (+23 mean; with v3 seed 0 added, +14.5 and the ranges overlap, see "Robustness checks"), because plain Codex lost the tested set in
   2 of 3 seeds (161 and 195 repeats, each costing a slot; 55-60 short batches). It wrote 121-238
   files in every seed, yet still repeated. hyp_base_s1, the one plain Codex seed with an exact
   record (4 repeats), has the best hypothesis score of all six runs.
@@ -774,8 +774,41 @@ Codex: final files filtered by write time, an upper bound).
   runs), usually within 2 tool calls; its compaction summary names its data files. Plain Codex does so after
   68-98% of compactions when it keeps files, and proposes before re-reading more often (up to 55% in
   hyp_base_s1).
-- **Repeats cluster in rounds with a compaction** in the plain Codex runs that repeat: 1.8 vs 0.9 and 2.1 vs
+- **Repeats cluster in rounds with a compaction** (but see "Robustness checks": this mostly disappears within blocks of 10 rounds) in the plain Codex runs that repeat: 1.8 vs 0.9 and 2.1 vs
   1.5 per round with files, 9.4 vs 7.3 and 12.2 vs 11.1 without. A modest effect, and confounded with round
   number (both grow later in the run); the prototype's repeats are near zero either way.
 - "Memory read" is a pattern match on tool-call text (a read command on a workspace data file, or the JS
   store's `load()`); spot-checked, not exhaustive.
+
+## Robustness checks (Nov 25, no model calls)
+
+**Repeats and compaction, controlling for stage of the run** (`ours/compaction_confound.py`). The raw
+pattern (more repeats in rounds with a compaction) mostly disappears when rounds are compared only with
+rounds in the same block of 10; no run is significant in a within-block permutation test.
+
+| run | rounds with / without compaction | repeats | raw diff | within-block diff | p (one-sided) |
+|---|---|---|---|---|---|
+| nf_base_s0 | 39 / 61 | 811 | +2.17 | +1.76 | 0.083 |
+| nf_base_s1 | 49 / 51 | 1167 | +1.13 | +0.36 | 0.412 |
+| hyp_base_s0 | 81 / 19 | 161 | +0.88 | +0.75 | 0.390 |
+| hyp_base_s2 | 80 / 20 | 195 | +0.56 | +0.10 | 0.524 |
+| v3_base_s0 | 82 / 18 | 18 | +0.22 | +0.06 | 0.820 |
+
+Repeats instead build up over the run (repeats per 10-round block, nf_base_s1: 0, 0, 7, 50, 82, 68, 127,
+208, 260, 365). So forgetting is cumulative, not a spike at each compaction: as the tested set grows,
+the part that survives in context shrinks. With compactions every 1-2 rounds, nearly every round has one,
+so this design cannot separate single compaction events well.
+
+**Hits and cost, 100x32 with hypotheses (hyp_* and v3_* seed 0; same settings except grading rules)**
+
+| | hits (4 runs) | mean | input tokens (mean) | wall time (mean) | hits per M tokens |
+|---|---|---|---|---|---|
+| prototype | 198*, 215, 218, 194 | 206.3 | 23.0M | 208 min | 9.0 |
+| plain Codex | 188, 185, 189, 205 | 191.8 | 11.6M | 97 min | 16.5 |
+
+\* stopped at round 99. Difference +14.5 hits (+7.6%) for 2.0x tokens and 2.1x wall time, about 1.3 extra
+hits per extra million tokens. Exact permutation test over the 8 runs: one-sided p = 0.071, two-sided
+p = 0.14. The ranges overlap (v3_base_s0's 205 beats two prototype runs), so the hit advantage is a trend,
+not an established effect. Without hypotheses (dm_*), the prototype used half the tokens (12.4-12.7M,
+229 and 210 hits; plain Codex 5.2M, 212): the hypothesis checkpoints roughly double both arms' cost.
+A no-LLM heuristic with the same lookups gets about 221.
